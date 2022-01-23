@@ -57,7 +57,13 @@ function Write-Log {
     END{}
   }
   
- 
+  Function Test-IsAdmin
+  {
+      ([Security.Principal.WindowsPrincipal] `
+        [Security.Principal.WindowsIdentity]::GetCurrent() `
+      ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+  }
+  
  function Get-AuthToken {
 
     <#
@@ -973,7 +979,11 @@ Function  Test-Rule{
 #################################################### 
 
 #region Authentication
-
+# validate that user is local admin running elevate for firewall rule creation
+if (-not (Test-IsAdmin) ) {
+  Return "Please run PowerShell elevated (run as administrator) and run the script again."
+  Break
+  } 
 
 
 # Checking if authToken exists before running authentication
@@ -1033,6 +1043,8 @@ $FirewallPolicys = @()
 $global:logName = Join-Path -Path $env:temp -ChildPath  $("Test-IntuneFirewallRules_$((Get-Date -Format u) -replace "[\s:]","_").log")
 $global:ErrorLogName = Join-Path -Path $env:temp -ChildPath  $("Test-IntuneFirewallRules_Errors_$((Get-Date -Format u) -replace "[\s:]","_").log")
 $global:detectedErrors = @()
+
+
 
 Write-Log -WriteStdOut "`r`n$line`r`nStarting firewall policy evaluation `r`n$line`r`n"  -LogName $global:LogName  
 

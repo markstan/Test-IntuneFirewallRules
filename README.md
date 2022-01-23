@@ -10,7 +10,7 @@ This utility will log on to your Intune tenant via Graph API and retrieve all fi
 
 Test-IntuneFirewallRules must be run as a local administrator.  Your Intune/AAD credentials must allow at least read access on Configuration Policies.
 
-When the script finishes, it will show an HTML report automatically.![HTML report created by Test-IntuneFirewallRules.ps1](https://github.com/markstan/Test-IntuneFirewallRules/blob/master/Resources/results.png)
+When the script finishes, it will show an HTML report automatically.![HTML report created by Test-IntuneFirewallRules.ps1](https://github.com/markstan/Test-IntuneFirewallRules/blob/main/Resources/results.png)
 
 ## Example
 
@@ -23,4 +23,4 @@ After the script runs, 3 files are created:
 * FirewallRuleTests.html
 
 All files are located in %temp%.
-![Files in %temp% created by Test-IntuneFirewallRules.ps1](https://github.com/markstan/Test-IntuneFirewallRules/blob/master/Resources/Filescreated.png)
+![Files in %temp% created by Test-IntuneFirewallRules.ps1](https://github.com/markstan/Test-IntuneFirewallRules/blob/main/Resources/Filescreated.png)
