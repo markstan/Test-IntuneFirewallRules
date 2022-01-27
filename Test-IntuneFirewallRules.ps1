@@ -886,7 +886,7 @@ function Test-FirewallRuleCreatesSuccessfully {
     "Running command (spaces will be quoted):`r`n`r`n$tabs New-NetFirewallRule $nnfwrule -Enabled $enabled`r`n"  | Write-Log
     try {
       $dispName = $ConstructedCommandLineArgs["displayName"] -replace $testString, ""
-      $null = New-NetFirewallRule  @ConstructedCommandLineArgs -Enabled $enabled
+      $null = New-NetFirewallRule  @ConstructedCommandLineArgs -Enabled $enabled -ErrorAction Stop
       "`r`n$tabs$pluses`r`n$tabs Successfully created rule. Name: $dispName`r`n`r`n" | Write-Log
  
        
@@ -943,7 +943,7 @@ Function  Test-Rule{
     $parsedJSON = $ruleJSON # | ConvertFrom-Json
     $parsedJSON | Write-Log
     # Begin section rules
-    $EnvVar_with_Space_Pattern =  "%\w+\s+\w+%" 
+    $EnvVar_with_Space_Pattern =  "%\w+\s+\w+.*%"
     $EnvVar_without_Closure =  "%(\w+.*)?[^%]\\"
     $defaultEnvVars = @("ALLUSERSPROFILE", "APPDATA", "COMMONPROGRAMFILES", "COMMONPROGRAMFILES(x86)", "CommonProgramW6432", "HOMEDRIVE", "HOMEPATH", "LOCALAPPDATA", `
                         "PATH", "PathExt", "PROGRAMDATA", "PROGRAMFILES", "ProgramW6432", "PROGRAMFILES(X86)", "SystemDrive", "SystemRoot", "TEMP", "TMP", "USERNAME", `
@@ -966,7 +966,7 @@ Function  Test-Rule{
             $DetectedPathIssues += $msg
         }
     }
-    # check for patterns like "%program files%"
+    # check for patterns like "%program files%" or "%Program Files (x86)"
     elseif ($filepath -match $EnvVar_with_Space_Pattern ){
         $msg = "Environmental variable with space pattern detected in $filepath in rule $displayName"            
         $msg | Write-Log -Level Error
