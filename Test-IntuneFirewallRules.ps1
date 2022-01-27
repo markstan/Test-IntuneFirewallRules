@@ -1103,11 +1103,14 @@ else {
     Write-Log "No firewall rules found..."  -WriteStdOut -Level Warning
 }
 
-Generate-HTMLReport -resultBlob $global:detectedErrors
+New-HTMLReport -resultBlob $global:detectedErrors
 $global:detectedErrors |  Format-List | Out-File $global:ErrorLogName -Force -Append
 New-HTMLReport -resultBlob $global:detectedErrors
 
 # Cleanup
 Remove-TestFirewallRules
 Start-Process $logName
-Start-Process "FirewallRuleTests.html"
+
+if (test-path .\FirewallRuleTests.html) {
+  Start-Process "FirewallRuleTests.html"
+}
