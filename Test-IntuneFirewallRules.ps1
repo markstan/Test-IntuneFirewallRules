@@ -238,14 +238,15 @@ function Write-BadRule {
     param(
         $FWRule,
         $ExceptionInfo = "",
-        $DetectedPathIssues = " "
+        $DetectedPathIssues = " ",
+        $PolicyName = "Unknown"
     )
  
     $ExceptionType = "Unknown"
     if ($ExceptionInfo){ $ExceptionType = $ExceptionInfo}
     $pathIssuesString = $DetectedPathIssues | Out-String
  
-    $newReport = New-RuleCheckResult -FWRuleName $FWRule.DisplayName  -result "Failed" -Exception $ExceptionType -PatternsDetected  $pathIssuesString
+    $newReport = New-RuleCheckResult -FWRuleName $FWRule.DisplayName  -result "Failed" -Exception $ExceptionType -PatternsDetected  $pathIssuesString -PolicyName $PolicyName
     $global:detectedErrors += $newReport
   }
  
@@ -256,11 +257,13 @@ function Write-BadRule {
           [string] [Parameter(Mandatory=$true)] $FWRuleName, 
           [string] $Exception,
           [string] [ValidateSet("Passed","Warning", "Failed", "Information")] $result,
-          [string] $PatternsDetected
+          [string] $PatternsDetected,
+          [string] $PolicyName = "Unknown"
       )
   
   
       $RuleResult = [PSCustomObject] [Ordered] @{
+          'Policy name' = $PolicyName
           'Firewall Rule Name'= $FWRuleName
           'Exception'= $Exception
           'Test Result'= $result
@@ -706,7 +709,8 @@ $Resource = "deviceManagement/intents/$id/categories/fae9ad7a-772f-4cae-a60b-14a
 # Return a command line for the New-NetFirewallRule cmdlet based on JSON data
 function Test-FirewallRuleCreatesSuccessfully {
     param( $FWRuleToCreate,
-           $DetectedPathIssues )
+           $DetectedPathIssues,
+           $PolicyName = "Unknown" )
 
 
     # Get the list of populated properties to create the test rule from
@@ -889,15 +893,15 @@ function Test-FirewallRuleCreatesSuccessfully {
     }
     catch {
       $errMsg = $error[0] 
-      "`r`n$tabs$stars`r`n`r`nException creating rule. Name: $dispName`: $errMsg`r`n`r`n$stars`r`n" | Write-Log
-      Write-BadRule -FWRule $FWRuleToCreate -ExceptionInfo  $errMsg -DetectedPathIssues $DetectedPathIssues
+      "`r`n$tabs$stars`r`n`r`n$tabs Exception creating rule. Name: $dispName`: $errMsg`r`n`r`n$tabs$stars`r`n" | Write-Log -WriteStdOut
+      Write-BadRule -FWRule $FWRuleToCreate -ExceptionInfo  $errMsg -DetectedPathIssues $DetectedPathIssues -PolicyName $PolicyName
     }
     finally {
         # Catch condition where rule creates successfully but have detected a bad path
         if ( ($errMsg -eq "") -and ($DetectedPathIssues.count -gt 0) ){
             "Bad path regex found in $dispName" | Write-Log -Level Warning
             $DetectedPathIssues | Write-Log -Level Warning
-            Write-BadRule -FWRule $FWRuleToCreate -ExceptionInfo  $errMsg -DetectedPathIssues $DetectedPathIssues
+            Write-BadRule -FWRule $FWRuleToCreate -ExceptionInfo  $errMsg -DetectedPathIssues $DetectedPathIssues -PolicyName $PolicyName
         }
     }
  
@@ -931,7 +935,10 @@ function Remove-TestFirewallRules {
 
 
 Function  Test-Rule{
-    param($ruleJSON) 
+    param(
+      $ruleJSON,
+      $PolicyName = "Unknown"
+      ) 
     $report = @()
     $parsedJSON = $ruleJSON # | ConvertFrom-Json
     $parsedJSON | Write-Log
@@ -972,7 +979,7 @@ Function  Test-Rule{
             $DetectedPathIssues += $msg
         } 
 
-    Test-FirewallRuleCreatesSuccessfully -FWRuleToCreate $ruleJSON -DetectedPathIssues $DetectedPathIssues
+    Test-FirewallRuleCreatesSuccessfully -FWRuleToCreate $ruleJSON -DetectedPathIssues $DetectedPathIssues -PolicyName $PolicyName
     $report
  
 }
@@ -1063,8 +1070,8 @@ if($FirewallPolicys){
  
          
 
-        if ($isAssigned -eq $true) {
-                    Write-Log -WriteStdOut "Firewall policy $firewallPolicyName found..."  
+        if ($isAssigned -eq $true ) {
+                    Write-Log -WriteStdOut "*** Assigned firewall policy $firewallPolicyName found..."  
                      
 
                     # don't process imported firewall global settings - these are firewall config, not settings
@@ -1078,7 +1085,7 @@ if($FirewallPolicys){
                             if ($Rule -match "\[\{.*\}\]") {
                                 $ruleJSONs = $Rule | ConvertFrom-Json
                                 foreach ($ruleJSON in $ruleJSONs){
-                                    Test-Rule -ruleJSON $ruleJSON 
+                                    Test-Rule -ruleJSON $ruleJSON -PolicyName $firewallPolicyName
                                 }
                             }
                             else {
@@ -1111,6 +1118,6 @@ New-HTMLReport -resultBlob $global:detectedErrors
 Remove-TestFirewallRules
 Start-Process $logName
 
-if (test-path .\FirewallRuleTests.html) {
-  Start-Process "FirewallRuleTests.html"
+if (test-path $env:temp\FirewallRuleTests.html) {
+  Start-Process "$env:temp\FirewallRuleTests.html"
 }
