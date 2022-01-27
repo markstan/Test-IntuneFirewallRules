@@ -944,7 +944,8 @@ Function  Test-Rule{
     $parsedJSON | Write-Log
     # Begin section rules
     $EnvVar_with_Space_Pattern =  "%\w+\s+\w+.*%"
-    $EnvVar_without_Closure =  "%(\w+.*)?[^%]\\"
+    # string starting with % followed by any number of chars except %, followed by a \
+    $EnvVar_without_Closure =  "^%([^%])*\\(.*)"
     $defaultEnvVars = @("ALLUSERSPROFILE", "APPDATA", "COMMONPROGRAMFILES", "COMMONPROGRAMFILES(x86)", "CommonProgramW6432", "HOMEDRIVE", "HOMEPATH", "LOCALAPPDATA", `
                         "PATH", "PathExt", "PROGRAMDATA", "PROGRAMFILES", "ProgramW6432", "PROGRAMFILES(X86)", "SystemDrive", "SystemRoot", "TEMP", "TMP", "USERNAME", `
                         "USERPROFILE", "WINDIR", "PUBLIC", "PSModulePath", "OneDrive", "DriverData" )
