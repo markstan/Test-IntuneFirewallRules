@@ -8,7 +8,16 @@ See LICENSE in the project root for license information.
 #>
 
 ####################################################
- 
+
+Param (
+  [string]$PolicyName ,
+  [bool]$Debug = $false,
+  [switch]$DeleteTestFirewallRules,
+  [switch]$IncludeUnassignedPolicies
+
+
+)
+
  
 function Write-Log {
     [CmdletBinding()]
@@ -466,19 +475,26 @@ Function Get-FirewallPolicies(){
 
 <#
 .SYNOPSIS
-This function is used to get Managed Devices from the Graph API REST interface
+This function is used to get Firewall Policies from the Graph API REST interface
 .DESCRIPTION
-The function connects to the Graph API Interface and gets Managed Devices
+The function connects to the Graph API Interface and returns all Firewall Policies
 .EXAMPLE
 Get-ManagedDevices
 Returns firewall policies created from the endpointSecurityFirewall template
 .NOTES
 NAME: Get-FirewallPolicies
 #>
-    #[cmdletbinding()]
+    [cmdletbinding()]
 
     $graphApiVersion = "Beta"
-    $Resource = "deviceManagement/configurationPolicies?`$filter=templateReference/TemplateFamily eq 'endpointSecurityFirewall'"
+
+    if ($PolicyName) {
+      $Resource = "deviceManagement/configurationPolicies?`$filter=name eq `'$PolicyName`'"
+    }
+    else {
+      $Resource = "deviceManagement/configurationPolicies?`$filter=templateReference/TemplateFamily eq 'endpointSecurityFirewall'"
+    }
+    
 
 
     try {
@@ -530,7 +546,13 @@ NAME: Get-ManagedDevices
 [cmdletbinding()]
 
 $graphApiVersion = "Beta"
-$Resource = "deviceManagement/configurationPolicies?`$select=id,name,description,platforms,lastModifiedDateTime,technologies,settingCount,roleScopeTagIds,isAssigned,templateReference`&`$filter=(technologies eq 'configManager' and creationSource eq 'Firewall')"
+if ($PolicyName){
+  $Resource = "deviceManagement/configurationPolicies?`$filter=(technologies eq 'configManager' and creationSource eq 'Firewall' and name eq `'$PolicyName`')"  
+}
+else {
+  $Resource = "deviceManagement/configurationPolicies?`$filter=(technologies eq 'configManager' and creationSource eq 'Firewall')"
+}
+
 #https://graph.microsoft.com/beta/deviceManagement/configurationPolicies?$filter=(technologies%20eq%20%27configManager%27%20and%20creationSource%20eq%20%27Firewall%27) 
 
 
@@ -580,11 +602,11 @@ Function Get-FWPolicyIntents(){
 
 <#
 .SYNOPSIS
-This function is used to get Managed Devices from the Graph API REST interface
+This function is used to get Firewall policies (intents) from the Graph API REST interface
 .DESCRIPTION
 The function connects to the Graph API Interface and returns intent information
 .EXAMPLE
-Get-ManagedDevices
+Get-FWPolicyIntents
 Returns firewall policy intents
 .NOTES
 NAME: Get-FWPolicyIntents
@@ -592,10 +614,16 @@ NAME: Get-FWPolicyIntents
 [cmdletbinding()]
 
 $graphApiVersion = "Beta"
-$Resource = "deviceManagement/intents?`$filter=templateId%20eq%20%27c53e5a9f-2eec-4175-98a1-2b3d38084b91%27%20or%20templateId%20eq%20%274356d05c-a4ab-4a07-9ece-739f7c792910%27%20or%20templateId%20eq%20%275340aa10-47a8-4e67-893f-690984e4d5da%27"
-# https://graph.microsoft.com/beta/deviceManagement/intents?$filter=templateId%20eq%20%27c53e5a9f-2eec-4175-98a1-2b3d38084b91%27%20or%20templateId%20eq%20%274356d05c-a4ab-4a07-9ece-739f7c792910%27%20or%20templateId%20eq%20%275340aa10-47a8-4e67-893f-690984e4d5da%27
 
-
+if ($PolicyName){
+  "Policy name $PolicyName specified." | Write-Log  
+  $Resource = "deviceManagement/intents?`$filter=displayName eq `'$PolicyName`'"
+}
+else {
+  
+  $Resource = "deviceManagement/intents?`$filter=templateId%20eq%20%27c53e5a9f-2eec-4175-98a1-2b3d38084b91%27%20or%20templateId%20eq%20%274356d05c-a4ab-4a07-9ece-739f7c792910%27%20or%20templateId%20eq%20%275340aa10-47a8-4e67-893f-690984e4d5da%27"
+}
+ 
     try {
 
     $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)"
@@ -654,7 +682,7 @@ param( [string]$id)
 $graphApiVersion = "Beta"
  
 # TODO - do we have any general firewall rules with guid d9fb9722-5b6d-4f85-99e2-4a746a9c8b95?
-$Resource = "deviceManagement/intents/$id/categories/fae9ad7a-772f-4cae-a60b-14a10fa827f7/settings?$expand=Microsoft.Graph.DeviceManagementComplexSettingInstance/Value"
+$Resource = "deviceManagement/intents/$id/categories/fae9ad7a-772f-4cae-a60b-14a10fa827f7/settings?`$expand=Microsoft.Graph.DeviceManagementComplexSettingInstance/Value"
 #ex: https://graph.microsoft.com/beta/deviceManagement/intents/dace94df-b380-46d1-85a8-a7eabc0f63d8/categories/fae9ad7a-772f-4cae-a60b-14a10fa827f7/settings?$expand=Microsoft.Graph.DeviceManagementComplexSettingInstance/Value
 
 
@@ -721,7 +749,7 @@ function Test-FirewallRuleCreatesSuccessfully {
     $stars = '*' * 80
     $pluses = '+' * 80
     # always create the rule disabled so that we don't inadvertantly block traffic
-    $enabled =  [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Enabled]::false
+    $enabled =  [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Enabled]::False
     $testString = "____MSTestRule_DeleteMe____"
     $errMsg = ""
     
@@ -886,7 +914,7 @@ function Test-FirewallRuleCreatesSuccessfully {
     "Running command (spaces will be quoted):`r`n`r`n$tabs New-NetFirewallRule $nnfwrule -Enabled $enabled`r`n"  | Write-Log
     try {
       $dispName = $ConstructedCommandLineArgs["displayName"] -replace $testString, ""
-      $null = New-NetFirewallRule  @ConstructedCommandLineArgs -Enabled $enabled -ErrorAction Stop
+      $null = New-NetFirewallRule  @ConstructedCommandLineArgs -Enabled $enabled -ErrorAction "Stop"
       "`r`n$tabs$pluses`r`n$tabs Successfully created rule. Name: $dispName`r`n`r`n" | Write-Log
  
        
@@ -1045,20 +1073,26 @@ $global:authToken = Get-AuthToken -User $User
 #
 $ErrorActionPreference = "Stop"
 # set to true for verbose logging
-$global:debugMode = $true 
+$global:debugMode = $Debug
 $line = "=" * 120
 $FirewallPolicys = @() 
 $global:logName = Join-Path -Path $env:temp -ChildPath  $("Test-IntuneFirewallRules_$((Get-Date -Format u) -replace "[\s:]","_").log")
 $global:ErrorLogName = Join-Path -Path $env:temp -ChildPath  $("Test-IntuneFirewallRules_Errors_$((Get-Date -Format u) -replace "[\s:]","_").log")
-$global:detectedErrors = @()
-
-
+$global:detectedErrors = @() 
 
 Write-Log -WriteStdOut "`r`n$line`r`nStarting firewall policy evaluation `r`n$line`r`n"  -LogName $global:LogName  
 
+# Special mode to clean up orphaned rules created by previous runs
+if ($DeleteTestFirewallRules){
+  "Removing test firewall rules..." | Write-Log -WriteStdOut
+  Remove-TestFirewallRules
+  break
+}
+ 
 $FirewallPolicys += Get-FirewallPolicies
 $FirewallPolicys += Get-ConfigManFirewallPolicies
 $FirewallPolicys += Get-FWPolicyIntents
+ 
 
 if ($debugMode){ $FirewallPolicys | Write-Log -Level Verbose}
 $FirewallPolicys =  $FirewallPolicys | Sort-Object -Property isAssigned, displayName  
@@ -1068,10 +1102,11 @@ if($FirewallPolicys){
     foreach($Firewallpolicy in $Firewallpolicys){
         $firewallPolicyName = $Firewallpolicy.displayName
         $isAssigned = $FirewallPolicy.isAssigned
- 
-         
-
-        if ($isAssigned -eq $true ) {
+        
+        # Examine policy rules if 1) Default mode - policy is assigned
+        #                         2) -IncludeUnassignedPolicies commmand line switch is specified
+        #                         3) if -PolicyName command line switch (return policy whether enabled or not)
+        if ( ($isAssigned -eq $true) -or ($IncludeUnassignedPolicies) -or ($PolicyName)) {
                     Write-Log -WriteStdOut "*** Assigned firewall policy $firewallPolicyName found..."  
                      
 
@@ -1122,3 +1157,6 @@ Start-Process $logName
 if (test-path $env:temp\FirewallRuleTests.html) {
   Start-Process "$env:temp\FirewallRuleTests.html"
 }
+
+
+ 
