@@ -11,61 +11,160 @@ See LICENSE in the project root for license information.
 
 Param (
   [string]$PolicyName ,
+  [string]$PolicyID,
   [bool]$Debug = $false,
   [switch]$DeleteTestFirewallRules,
-  [switch]$IncludeUnassignedPolicies
+  [switch]$IncludeUnassignedPolicies,
+  [switch]$AcceptEULA
 
 
 )
 
- 
+# Script-wide logging function
 function Write-Log {
-    [CmdletBinding()]
-    param(
-        [Parameter(ValueFromPipeline = $true)]
-        [ValidateNotNullOrEmpty()]
-        [string]$Message = "",
+  [CmdletBinding()]
+  param(
+      [Parameter(ValueFromPipeline = $true)]
+      [ValidateNotNullOrEmpty()]
+      [string]$Message = "",
+
+      [Parameter()]
+      [ValidateNotNullOrEmpty()]
+      [ValidateSet('Information','Warning','Error','Verbose')]
+      [string]$Level = 'Information',
+      
+      [Parameter()]
+      [switch]$WriteStdOut,
+
+      [Parameter()]
+      # create log in format 
+      [string]$logName =  $global:logName
+ 
+  )
+
   
-        [Parameter()]
-        [ValidateNotNullOrEmpty()]
-        [ValidateSet('Information','Warning','Error','Verbose')]
-        [string]$Level = 'Information',
-        
-        [Parameter()]
-        [switch]$WriteStdOut,
-  
-        [Parameter()]
-        # create log in format 
-        [string]$logName =  $global:logName
-   
-    )
-  
-    
-  
-    BEGIN {
-      if ( ($null -eq $logName) -or ($logName -eq "")) { Write-Error "Please set variable `$global$Logfile."}
-    }
-    PROCESS {
-        # only log verbose if flag is set
-        if ( ($Level -eq "Verbose") -and ( -not ($debugMode) ) ){
-          # don't log events unless flag is set
-        }
-          else {
-           
-          [pscustomobject]@{
-              Time = (Get-Date -f u)   
-              Line = "`[$($MyInvocation.ScriptLineNumber)`]"          
-              Level = $Level
-              Message = $Message
-              
-          } |  Export-Csv -Path $logName -Append -Force -NoTypeInformation -Encoding Unicode
-  
-          if (  $WriteStdOut -or ( ($Level -eq "Verbose") -and $debugMode)) { Write-Output $Message}
+
+  BEGIN {
+    if ( ($null -eq $logName) -or ($logName -eq "")) { Write-Error "Please set variable `$global$Logfile."}
+  }
+  PROCESS {
+      # only log verbose if flag is set
+      if ( ($Level -eq "Verbose") -and ( -not ($debugMode) ) ){
+        # don't log events unless flag is set
       }
+        else {
+         
+        [pscustomobject]@{
+            Time = (Get-Date -f u)   
+            Line = "`[$($MyInvocation.ScriptLineNumber)`]"          
+            Level = $Level
+            Message = $Message
+            
+        } |  Export-Csv -Path $logName -Append -Force -NoTypeInformation -Encoding Unicode
+
+        if (  $WriteStdOut -or ( ($Level -eq "Verbose") -and $debugMode)) { Write-Output $Message}
     }
-    END{}
+  }
+  END{}
+}
+
+
+# Show warning about firewall creation and how to remedy any artifacts left by the script
+function Test-IsEULAAccepted {
+  [string]$message =
+@"
+  
+  Warning:  This script will create test firewall rules on the device it is ran on.  These rules are disabled and named with a `"____MSTestRule_DeleteMe____`" prefix.
+  
+  Rules will be automatically deleted when the script completes.
+  
+  If there are any rules remaing (for instance, if the device reboots or the PowerShell window is closed while the script is running, run this command to delete remaining artifacts:
+  
+  Test-IntuneFirewallRules.ps1 -DeleteTestFirewallRules
+"@
+
+  [bool]$isEULAAccepted = $false
+
+  if (  $AcceptEULA ){
+    $isEULAAccepted = $true
+  }
+
+  if ( $isEULAAccepted -eq $false) {
+    Write-Host -Object $message -ForegroundColor "Red"
+    Write-Host "`r`nType (Y)es to accept this warning and continue running this script:  " -NoNewline
+    $accepted = Read-Host
+
+    if ($accepted -in ("y", "yes", "yep", "yeppers", "boyhowdy") ) {
+      $isEULAAccepted = $true
+      "EULA accepted via command line: $accepted" | Write-Log
+    }
+    else {
+      "EULA not accepted, exiting: $accepted" | Write-Log
+    }
+
+  }
+  else {
+    "EULA accepted via command line." | Write-Log
   }
   
+  $isEULAAccepted
+  
+}
+
+function Get-SuggestedAction {
+  param (
+    $ExceptionInfo,
+    $DetectedPathIssues,
+    $FilePath
+  )
+
+  [string]$Remediation = ""
+
+  
+  "Change $DetectedPathIssues to $fixedPath" | Write-Log  
+  # String fix-up for reporting
+  $ProblemDescription = $(($ExceptionInfo.Exception) | Out-String ) -replace "\r\n", ""
+
+  switch -Wildcard  ( $ProblemDescription){
+
+    "The parameter is incorrect*"   { 
+        
+        
+
+        switch -Wildcard ($DetectedPathIssues) {
+          "*space pattern*" { 
+              $envVar = $FilePath -replace "(%.*%)(.*)", "`$1"
+              $fixedString = $envVar -replace " ", ""
+              $Remediation = "Remove spaces in the environmental variable in the rule's file path.`r`nChange $envVar to $fixedString in $FilePath."
+          }
+          "*Unterminated % *"{
+              $UnterminatedEnvVar = $FilePath -replace "(%.*)(\\.*)", "`$1"
+              $fixedString = $UnterminatedEnvVar + '%'
+              $Remediation = "Add a '%' character to the environmental variable in the rule's file path.`r`nChange $UnterminatedEnvVar to $fixedString in $FilePath."
+          }
+          "Invalid system variable*"{
+              $envVar = $FilePath -replace "(%.*%)(.*)", "`$1"
+              $Remediation = "The environmental variable in file path $FilePath is not supported.  Only default environmental variables are supported.  Change $envVar to a fixed path."
+          }
+          "Leading spaces*"{
+              $Remediation = "Remove all space characters before the first '%' character in file path `"$FilePath`"."
+          }
+           
+        }
+      }
+    "The address range is invalid*" { $Remediation = "Fix address range in rule."}
+    default                         { $Remediation = "Unable to detect fix.  Please try to create rule manually to troubleshoot."}
+
+  }
+
+  "REMEDIATION: $Remediation" | Write-Log
+  $Remediation
+
+
+}   
+
+
+
   Function Test-IsAdmin
   {
       ([Security.Principal.WindowsPrincipal] `
@@ -248,14 +347,15 @@ function Write-BadRule {
         $FWRule,
         $ExceptionInfo = "",
         $DetectedPathIssues = " ",
-        $PolicyName = "Unknown"
+        $PolicyName = "Unknown",
+        $SuggestedFix
     )
  
     $ExceptionType = "Unknown"
     if ($ExceptionInfo){ $ExceptionType = $ExceptionInfo}
     $pathIssuesString = $DetectedPathIssues | Out-String
  
-    $newReport = New-RuleCheckResult -FWRuleName $FWRule.DisplayName  -result "Failed" -Exception $ExceptionType -PatternsDetected  $pathIssuesString -PolicyName $PolicyName
+    $newReport = New-RuleCheckResult -FWRuleName $FWRule.DisplayName  -result "Failed" -Exception $ExceptionType -PatternsDetected  $pathIssuesString -PolicyName $PolicyName -SuggestedFix $SuggestedFix
     $global:detectedErrors += $newReport
   }
  
@@ -267,7 +367,8 @@ function Write-BadRule {
           [string] $Exception,
           [string] [ValidateSet("Passed","Warning", "Failed", "Information")] $result,
           [string] $PatternsDetected,
-          [string] $PolicyName = "Unknown"
+          [string] $PolicyName = "Unknown",
+          $SuggestedFix
       )
   
   
@@ -276,7 +377,8 @@ function Write-BadRule {
           'Firewall Rule Name'= $FWRuleName
           'Exception'= $Exception
           'Test Result'= $result
-          'Patterns Detected'= $PatternsDetected 
+          'Patterns Detected'= $PatternsDetected
+          'Suggested fix' = $SuggestedFix
       }
       return $RuleResult
   }
@@ -549,6 +651,9 @@ $graphApiVersion = "Beta"
 if ($PolicyName){
   $Resource = "deviceManagement/configurationPolicies?`$filter=(technologies eq 'configManager' and creationSource eq 'Firewall' and name eq `'$PolicyName`')"  
 }
+if ($PolicyID){
+  $Resource = "deviceManagement/configurationPolicies?`$filter=(technologies eq 'configManager' and creationSource eq 'Firewall' and id eq `'$PolicyID`')"  
+}
 else {
   $Resource = "deviceManagement/configurationPolicies?`$filter=(technologies eq 'configManager' and creationSource eq 'Firewall')"
 }
@@ -618,6 +723,10 @@ $graphApiVersion = "Beta"
 if ($PolicyName){
   "Policy name $PolicyName specified." | Write-Log  
   $Resource = "deviceManagement/intents?`$filter=displayName eq `'$PolicyName`'"
+}
+elseif ($PolicyID){
+  "Policy ID $PolicyID specified." | Write-Log  
+  $Resource = "deviceManagement/intents?`$filter=id eq `'$PolicyID`'"
 }
 else {
   
@@ -911,6 +1020,7 @@ function Test-FirewallRuleCreatesSuccessfully {
     $nnfwrule = ($ConstructedCommandLineArgs |Format-List   | Out-String) -replace "(\r\n)+", " "  
     $nnfwrule = $nnfwrule -replace "Value\s+:\s+", "" 
     $nnfwrule = $nnfwrule -replace "Name  : ", "-" 
+    
     "Running command (spaces will be quoted):`r`n`r`n$tabs New-NetFirewallRule $nnfwrule -Enabled $enabled`r`n"  | Write-Log
     try {
       $dispName = $ConstructedCommandLineArgs["displayName"] -replace $testString, ""
@@ -920,16 +1030,20 @@ function Test-FirewallRuleCreatesSuccessfully {
        
     }
     catch {
+      [string]$Remediation = ""
       $errMsg = $error[0] 
       "`r`n$tabs$stars`r`n`r`n$tabs Exception creating rule. Name: $dispName`: $errMsg`r`n`r`n$tabs$stars`r`n" | Write-Log -WriteStdOut
-      Write-BadRule -FWRule $FWRuleToCreate -ExceptionInfo  $errMsg -DetectedPathIssues $DetectedPathIssues -PolicyName $PolicyName
+      $Remediation = Get-SuggestedAction -ExceptionInfo  $errMsg -DetectedPathIssues $DetectedPathIssues -FilePath $ConstructedCommandLineArgs.program
+      Write-BadRule -FWRule $FWRuleToCreate -ExceptionInfo  $errMsg -DetectedPathIssues $DetectedPathIssues -PolicyName $PolicyName -SuggestedFix $Remediation
     }
     finally {
         # Catch condition where rule creates successfully but have detected a bad path
         if ( ($errMsg -eq "") -and ($DetectedPathIssues.count -gt 0) ){
+            [string]$Remediation = ""
             "Bad path regex found in $dispName" | Write-Log -Level Warning
             $DetectedPathIssues | Write-Log -Level Warning
-            Write-BadRule -FWRule $FWRuleToCreate -ExceptionInfo  $errMsg -DetectedPathIssues $DetectedPathIssues -PolicyName $PolicyName
+            $Remediation = Get-SuggestedAction -ExceptionInfo  $errMsg -DetectedPathIssues $DetectedPathIssues -FilePath $ConstructedCommandLineArgs.program
+            Write-BadRule -FWRule $FWRuleToCreate -ExceptionInfo  $errMsg -DetectedPathIssues $DetectedPathIssues -PolicyName $PolicyName -SuggestedFix $Remediation
         }
     }
  
@@ -967,13 +1081,14 @@ Function  Test-Rule{
       $ruleJSON,
       $PolicyName = "Unknown"
       ) 
-    $report = @()
+    
     $parsedJSON = $ruleJSON # | ConvertFrom-Json
     $parsedJSON | Write-Log
     # Begin section rules
     $EnvVar_with_Space_Pattern =  "%\w+\s+\w+.*%"
     # string starting with % followed by any number of chars except %, followed by a \
     $EnvVar_without_Closure =  "^%([^%])*\\(.*)"
+    $EnvVar_With_Leading_Spaces = "^\s+%.*"
     $defaultEnvVars = @("ALLUSERSPROFILE", "APPDATA", "COMMONPROGRAMFILES", "COMMONPROGRAMFILES(x86)", "CommonProgramW6432", "HOMEDRIVE", "HOMEPATH", "LOCALAPPDATA", `
                         "PATH", "PathExt", "PROGRAMDATA", "PROGRAMFILES", "ProgramW6432", "PROGRAMFILES(X86)", "SystemDrive", "SystemRoot", "TEMP", "TMP", "USERNAME", `
                         "USERPROFILE", "WINDIR", "PUBLIC", "PSModulePath", "OneDrive", "DriverData" )
@@ -1007,9 +1122,15 @@ Function  Test-Rule{
             $msg | Write-Log -Level Error
             $DetectedPathIssues += $msg
         } 
+    # check for paths like %windir\ without a trailing '%'
+    elseif ($filepath -match $EnvVar_With_Leading_Spaces ) {
+          $msg = "Leading spaces detected in $filepath in rule $displayName" 
+          $msg | Write-Log -Level Error
+          $DetectedPathIssues += $msg
+      } 
 
     Test-FirewallRuleCreatesSuccessfully -FWRuleToCreate $ruleJSON -DetectedPathIssues $DetectedPathIssues -PolicyName $PolicyName
-    $report
+    
  
 }
 #################################################### 
@@ -1088,6 +1209,11 @@ if ($DeleteTestFirewallRules){
   Remove-TestFirewallRules
   break
 }
+
+if (-not (Test-IsEULAAccepted) ) {
+  "EULA not accepted, exiting." | Write-Log -WriteStdOut
+  break
+}
  
 $FirewallPolicys += Get-FirewallPolicies
 $FirewallPolicys += Get-ConfigManFirewallPolicies
@@ -1106,7 +1232,7 @@ if($FirewallPolicys){
         # Examine policy rules if 1) Default mode - policy is assigned
         #                         2) -IncludeUnassignedPolicies commmand line switch is specified
         #                         3) if -PolicyName command line switch (return policy whether enabled or not)
-        if ( ($isAssigned -eq $true) -or ($IncludeUnassignedPolicies) -or ($PolicyName)) {
+        if ( ($isAssigned -eq $true) -or ($IncludeUnassignedPolicies) -or ($PolicyName) -or ($PolicyID)) {
                     Write-Log -WriteStdOut "*** Assigned firewall policy $firewallPolicyName found..."  
                      
 
