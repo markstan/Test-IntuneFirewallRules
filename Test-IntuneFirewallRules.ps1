@@ -5,6 +5,13 @@
 Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT license.
 See LICENSE in the project root for license information.
 
+Test-IntuneFirewallRules.ps1
+
+Utility for testing Intune Firewall Rules
+Author: Mark Stanfill (markstan@microsoft.com)
+Published:  1/21/2022
+Last Updateed: 2/1/2022
+
 #>
 
 ####################################################
@@ -858,6 +865,8 @@ function Test-FirewallRuleCreatesSuccessfully {
     $stars = '*' * 80
     $pluses = '+' * 80
     # always create the rule disabled so that we don't inadvertantly block traffic
+    # load assembly
+    $null = Get-NetFirewallSetting
     $enabled =  [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Enabled]::False
     $testString = "____MSTestRule_DeleteMe____"
     $errMsg = ""
