@@ -8,7 +8,7 @@ Test-IntuneFirewallRules requirements:
 
 * AzureAD or AzureADPreview module must be installed.  You will be prompted to install the module if it is not present.
 * Internet connectivity
-* Windows 11
+* Windows 10 or Windows 11 test device (does not need to be domain-joined or enrolled in Intune)
 * The logged in account must be a member of the local administrators group.
 * The script must be ran in an elevated PowerShell window so that test firewall rules can be created.
 
