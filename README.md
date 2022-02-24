@@ -39,12 +39,12 @@ When the script finishes, it will show an HTML report automatically.![HTML repor
 
 ## Command Line Arguments
 
-* -PolicyName
-* -Debug
+* -RuleJSON
 * -DeleteTestFirewallRules
-* -IncludeUnassignedPolicies
 
 ## Examples
+Test-IntuneFirewallRules.ps1 -RuleJSON _path_to_JSON_file.json
+
 
 After the script runs, 3 files are created:
 
