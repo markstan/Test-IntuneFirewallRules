@@ -20,21 +20,26 @@ Param (
   [string]$PolicyName ,
   [string]$PolicyID,
   [bool]$Debug = $false,
+  # clean up test rules standalone option
   [switch]$DeleteTestFirewallRules,
+  # process policies that are not assigned to a group in Intune
   [switch]$IncludeUnassignedPolicies,
-  [switch]$AcceptEULA
+  # bypass EULA check
+  [switch]$AcceptEULA,
+  # ingest JSON exported from EndpointSecurityPolicy_Export.ps1
+  [string]$RuleJSON
 
 
 )
 
 ####################################################
-Region Functions
+#region Functions
 
 ####################################################
 
 function Write-Log {
    
-<#
+  <#
 .SYNOPSIS
  Script-wide logging function
 .DESCRIPTION
@@ -100,7 +105,7 @@ Set $global:LogName at the beginning of the script
  
 function Test-IsEULAAccepted {
    
-<#
+  <#
 .SYNOPSIS
  Show warning about firewall creation and how to remedy any artifacts left by the script 
 .DESCRIPTION
@@ -152,7 +157,7 @@ Bypass at script-level with Test-IntuneFirewallRules.ps1 -AcceptEULA
 ####################################################
 function Get-SuggestedAction {
    
-<#
+  <#
 .SYNOPSIS
 Parses rules for common regex patterns
 .DESCRIPTION
@@ -220,7 +225,7 @@ NAME: Get-SuggestedAction
 # Returns True if Admin, False if not
 Function Test-IsAdmin {
    
-<#
+  <#
 .SYNOPSIS
 Determines if script is being ran in elevated (admin) context 
 .DESCRIPTION
@@ -232,9 +237,9 @@ Test-IsAdmin
 NAME: Test-IsAdmin
 #>
 
-    # https://docs.microsoft.com/en-us/dotnet/api/system.security.principal.windowsbuiltinrole?view=net-6.0
-    # BUILTIN\Administrators = 544
-    Set-Variable ADMINISTRATORS -Option ReadOnly -Value 544
+  # https://docs.microsoft.com/en-us/dotnet/api/system.security.principal.windowsbuiltinrole?view=net-6.0
+  # BUILTIN\Administrators = 544
+  Set-Variable ADMINISTRATORS -Option ReadOnly -Value 544
  
   ([Security.Principal.WindowsPrincipal] `
     [Security.Principal.WindowsIdentity]::GetCurrent() `
@@ -383,7 +388,7 @@ function Get-AuthToken {
  
 function Get-LeafProperty {
    
-<#
+  <#
 .SYNOPSIS
 Parses JSON objects
 .DESCRIPTION
@@ -425,7 +430,7 @@ https://stackoverflow.com/questions/64187004/powershell-selecting-noteproperty-t
 
 function Write-BadRule {
    
-<#
+  <#
 .SYNOPSIS
  Records rules in error
 .DESCRIPTION
@@ -457,7 +462,7 @@ NAME: Write-BadRule
 
 function New-RuleCheckResult {
    
-<#
+  <#
 .SYNOPSIS
  Helper function to return a formatted rule output object
 .DESCRIPTION
@@ -495,7 +500,7 @@ NAME: New-RuleCheckResult
 
 function New-HTMLReport {
    
-<#
+  <#
 .SYNOPSIS
  Generates HTML report
 .DESCRIPTION
@@ -694,296 +699,31 @@ function resetTableRows(trs) {
 
 
 }
-
-####################################################
-
-Function Get-FirewallPolicies() {
-
-  <#
-.SYNOPSIS
-This function is used to get Firewall Policies from the Graph API REST interface
-.DESCRIPTION
-The function connects to the Graph API Interface and returns all Firewall Policies
-.EXAMPLE
-Get-FirewallPolicies
-Returns firewall policies created from the endpointSecurityFirewall template
-.NOTES
-NAME: Get-FirewallPolicies
-#>
-  [cmdletbinding()]
-
-  $graphApiVersion = "Beta"
-
-  if ($PolicyName) {
-    $Resource = "deviceManagement/configurationPolicies?`$filter=name eq `'$PolicyName`'"
-  } else {
-    $Resource = "deviceManagement/configurationPolicies?`$filter=templateReference/TemplateFamily eq 'endpointSecurityFirewall'"
-  }
-    
-
-
-  try {
-
-    $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)"
-   
-    $FirewallRulesResponse = (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get)
-    $FirewallRules = $FirewallRulesResponse.value 
-    $FirewallRulesNextLink = $FirewallRulesResponse."@odata.nextLink"
-
-    while ($null -ne $FirewallRulesNextLink) { 
-      $FirewallRulesResponse = (Invoke-RestMethod -Uri $FirewallRulesNextLink -Headers $authToken -Method Get)
-      $FirewallRulesNextLink = $FirewallRulesResponse."@odata.nextLink"
-      $FirewallRules += $FirewallRulesResponse.value 
-    }
-
-    return $FirewallRules  
-
-  }
-
-  catch {
-
-    $ex = $_.Exception 
-    Write-Log -Level Error -WriteStdOut  "Response content:`n$responseBody"  
-    Write-Log -Level Error -WriteStdOut  "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
-    Write-Log -Level Error -WriteStdOut "$ex.scriptstacktrace"
-    break
-
-  }
-
-}
-
-####################################################
-
-Function Get-ConfigManFirewallPolicies() {
-
-  <#
-.SYNOPSIS
-This function is used to get Managed Devices from the Graph API REST interface
-.DESCRIPTION
-The function connects to the Graph API Interface and gets Managed Devices
-.EXAMPLE
-Get-ConfigManFirewallPolicies
-Returns Managed Devices configured in Intune
-.NOTES
-NAME: Get-ConfigManFirewallPolicies
-#>
-
-  [cmdletbinding()]
-
-  $graphApiVersion = "Beta"
-  if ($PolicyName) {
-    $Resource = "deviceManagement/configurationPolicies?`$filter=(technologies eq 'configManager' and creationSource eq 'Firewall' and name eq `'$PolicyName`')"  
-  }
-  if ($PolicyID) {
-    $Resource = "deviceManagement/configurationPolicies?`$filter=(technologies eq 'configManager' and creationSource eq 'Firewall' and id eq `'$PolicyID`')"  
-  } else {
-    $Resource = "deviceManagement/configurationPolicies?`$filter=(technologies eq 'configManager' and creationSource eq 'Firewall')"
-  }
-
-  #https://graph.microsoft.com/beta/deviceManagement/configurationPolicies?$filter=(technologies%20eq%20%27configManager%27%20and%20creationSource%20eq%20%27Firewall%27) 
-
-
-  try {
-
-    $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)"
-
-    $FirewallRulesResponse = (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get)
-
-
-    $FirewallRules = $FirewallRulesResponse.value
-     
-    $FirewallRulesNextLink = $FirewallRulesResponse."@odata.nextLink"
-
-    while ($null -ne $FirewallRulesNextLink) {
-
-      $FirewallRulesResponse = (Invoke-RestMethod -Uri $FirewallRulesNextLink -Headers $authToken -Method Get)
-      $FirewallRulesNextLink = $FirewallRulesResponse."@odata.nextLink"
-      $FirewallRules += $FirewallRulesResponse.value
-
-    }
-
-    return $FirewallRules  
-
-  }
-
-  catch {
-
-    $ex = $_.Exception
-    $errorResponse = $ex.Response.GetResponseStream()
-    $reader = New-Object System.IO.StreamReader($errorResponse)
-    $reader.BaseStream.Position = 0
-    $reader.DiscardBufferedData()
-    $responseBody = $reader.ReadToEnd();
-    Write-Output "Response content:`n$responseBody"  
-    Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
-    
-    break
-
-  }
-
-}
  
-
-####################################################
-
-Function Get-FWPolicyIntents() {
-
-<#
-.SYNOPSIS
-This function is used to get Firewall policies (intents) from the Graph API REST interface
-.DESCRIPTION
-The function connects to the Graph API Interface and returns intent information
-.EXAMPLE
-Get-FWPolicyIntents
-Returns firewall policy intents
-.NOTES
-NAME: Get-FWPolicyIntents
-#>
-  [cmdletbinding()]
-
-  $graphApiVersion = "Beta"
-
-  if ($PolicyName) {
-    "Policy name $PolicyName specified." | Write-Log  
-    $Resource = "deviceManagement/intents?`$filter=displayName eq `'$PolicyName`'"
-  } elseif ($PolicyID) {
-    "Policy ID $PolicyID specified." | Write-Log  
-    $Resource = "deviceManagement/intents?`$filter=id eq `'$PolicyID`'"
-  } else {
-  
-    $Resource = "deviceManagement/intents?`$filter=templateId%20eq%20%27c53e5a9f-2eec-4175-98a1-2b3d38084b91%27%20or%20templateId%20eq%20%274356d05c-a4ab-4a07-9ece-739f7c792910%27%20or%20templateId%20eq%20%275340aa10-47a8-4e67-893f-690984e4d5da%27"
-  }
- 
-  try {
-
-    $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)"
-
-    $FirewallRulesResponse = (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get)
-
-
-    $FirewallRules = $FirewallRulesResponse.value
-     
-    $FirewallRulesNextLink = $FirewallRulesResponse."@odata.nextLink"
-
-    while ($null -ne $FirewallRulesNextLink) {
-
-      $FirewallRulesResponse = (Invoke-RestMethod -Uri $FirewallRulesNextLink -Headers $authToken -Method Get)
-      $FirewallRulesNextLink = $FirewallRulesResponse."@odata.nextLink"
-      $FirewallRules += $FirewallRulesResponse.value
-
-    }
-    "Found $($FirewallRules.count) policies with intents" | Write-Log
-    return $FirewallRules
-
-  }
-
-  catch { 
-    $ex = $_.Exception
-    $errorResponse = $ex.Response.GetResponseStream()
-    $reader = New-Object System.IO.StreamReader($errorResponse)
-    $reader.BaseStream.Position = 0
-    $reader.DiscardBufferedData()
-    $responseBody = $reader.ReadToEnd();
-    Write-Output "Response content:`n$responseBody"  
-    Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
-        
-    break
-
-  }
-
-}
-
-####################################################
-
-Function Get-FireWallRules() {
-
-  <#
-.SYNOPSIS
-This function is used to get Defender Firewall polcies from the Graph API REST interface
-.DESCRIPTION
-The function connects to the Graph API Interface and gets Defender Firewall policies
-.EXAMPLE
-Get-FireWallRules
-Returns firewall rules as detected by intents, filtered on the Defender Firewall category (categories/fae9ad7a-772f-4cae-a60b-14a10fa827f7; this is the same across all tenants).
-.NOTES
-NAME: Get-FireWallRules
-#>
-  [cmdletbinding()]
-  param( [string]$id)
-
-  $graphApiVersion = "Beta"
- 
-  # TODO - do we have any general firewall rules with guid d9fb9722-5b6d-4f85-99e2-4a746a9c8b95?
-  $Resource = "deviceManagement/intents/$id/categories/fae9ad7a-772f-4cae-a60b-14a10fa827f7/settings?`$expand=Microsoft.Graph.DeviceManagementComplexSettingInstance/Value"
-  #ex: https://graph.microsoft.com/beta/deviceManagement/intents/dace94df-b380-46d1-85a8-a7eabc0f63d8/categories/fae9ad7a-772f-4cae-a60b-14a10fa827f7/settings?$expand=Microsoft.Graph.DeviceManagementComplexSettingInstance/Value
-
-
-  try {
-
-    $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)"
-
-    $FirewallRulesResponse = (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get)
-
-
-    $FirewallRules = $FirewallRulesResponse.value
-     
-    $FirewallRulesNextLink = $FirewallRulesResponse."@odata.nextLink"
-
-    while ($null -ne $FirewallRulesNextLink) {
-
-      $FirewallRulesResponse = (Invoke-RestMethod -Uri $FirewallRulesNextLink -Headers $authToken -Method Get)
-      $FirewallRulesNextLink = $FirewallRulesResponse."@odata.nextLink"
-      $FirewallRules += $FirewallRulesResponse.value
-
-    }
-
-    if ($debug) {
-      "Firewall rules blob:`r`n`r`n`r`n" | Write-Log -Level Verbose
-      $FirewallRules | Out-String | Write-Log -Level Verbose
-    }
-    if ($global:debugMode) {
-      "Firewall Rules from  Get-FireWallRules:`r`n`r`n" | Write-Log -Level Verbose
-      $FirewallRules | Write-Log -Level Verbose
-    }
-    return $FirewallRules
-
-  }
-
-  catch { 
-    $ex = $_.Exception
-    $errorResponse = $ex.Response.GetResponseStream()
-    $reader = New-Object System.IO.StreamReader($errorResponse)
-    $reader.BaseStream.Position = 0
-    $reader.DiscardBufferedData()
-    $responseBody = $reader.ReadToEnd();
-    Write-Log -Level Error -WriteStdOut  "Response content:`n$responseBody"  
-    Write-Log -Level Error -WriteStdOut  "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
-    Write-Log -Level Error -WriteStdOut "$ex.scriptstacktrace"
-    break 
-  }
-
-}
-
 ####################################################
  
 function Test-FirewallRuleCreatesSuccessfully {
    
-<#
+  <#
 .SYNOPSIS
  Creates a disabled firewall rule given JSON definition of a FW rule
 .DESCRIPTION
  Return a command line for the New-NetFirewallRule cmdlet based on JSON data
 .EXAMPLE
-Get-FirewallPolicies
+Test-FirewallRuleCreatesSuccessfully
  
 .NOTES
-NAME: Get- 
+NAME: Test-FirewallRuleCreatesSuccessfully 
 #>
 
   param( $FWRuleToCreate,
     $DetectedPathIssues,
     $PolicyName = "Unknown" )
 
+  # support both object and JSON formats
+  if ($FWRuleToCreate.GetType().Name -eq "String") {
+    $FWRuleToCreate = $FWRuleToCreate | ConvertFrom-Json
+  }
 
   # Get the list of populated properties to create the test rule from
   $PopulatedProperties = $FWRuleToCreate | Get-LeafProperty | Where-Object { ("" -ne $_.Value) -and ($null -ne $_.Value) }
@@ -995,7 +735,7 @@ NAME: Get-
   # always create the rule disabled so that we don't inadvertantly block traffic
   # For reference, also loads assembly
   Get-NetFirewallSetting | Write-Log
-  Add-Type -AssemblyName Microsoft.PowerShell 
+   
   $enabled = [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Enabled]::False
   $testString = "____MSTestRule_DeleteMe____"
   $errMsg = ""
@@ -1099,7 +839,7 @@ NAME: Get-
           $ActionsEnum = ""
 
           foreach ($Action in $Actions) { 
-            "Action:  $action" | Write-Log -WriteStdOut
+            "Action:  $action" | Write-Log  
             switch ($Action) {
               "NotConfigured" { $ActionsEnum = [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Action]::NotConfigured }
               "Allowed" { $ActionsEnum = [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Action]::Allow }
@@ -1131,9 +871,10 @@ NAME: Get-
           $PortRangesEnum = @()
 
           foreach ($PortRange in $PortRangesTypes) { 
-            "PortRanges:  $PortRange" | Write-Log -WriteStdOut
+            "PortRanges:  $PortRange" | Write-Log  
             $PortRangesEnum += $PortRange 
-          } 
+          }
+         
             
           $PortCmdArg = $localRemoteCommandLineSwitch -replace "(.+)Ranges.*", "`$1"
           $ConstructedCommandLineArgs[$PortCmdArg] = $PortRangesEnum
@@ -1141,9 +882,13 @@ NAME: Get-
         }
      
         Default {
- 
-          $hashValue = $PropertyToSwitchMapping[$CommandLineSwitch] 
-          $ConstructedCommandLineArgs[$hashValue] = $argument
+          if ("" -eq $CommandLineSwitch){}
+          else {
+              $hashValue = $PropertyToSwitchMapping[$CommandLineSwitch] 
+              $ConstructedCommandLineArgs[$hashValue] = $argument
+          }
+          
+      
  
         }
       }
@@ -1189,7 +934,7 @@ NAME: Get-
 
 function Remove-TestFirewallRules {
    
-<#
+  <#
 .SYNOPSIS
  Cleans up test firewall rules created during rule creation
 .DESCRIPTION
@@ -1226,7 +971,7 @@ NAME: Remove-TestFirewallRules
 
 Function  Test-Rule {
    
-<#
+  <#
 .SYNOPSIS
  Tests firewall rules based on JSON to determine if the rule will succesfully create on managed devices
 .DESCRIPTION
@@ -1242,8 +987,15 @@ NAME: Test-Rule
     $ruleJSON,
     $PolicyName = "Unknown"
   ) 
-    
-  $parsedJSON = $ruleJSON # | ConvertFrom-Json
+  
+  # support both parsed and unparsed versions of data
+  if ($ruleJSON.GetType().Name -eq "String") {
+    $parsedJSON = $ruleJSON  | ConvertFrom-Json
+  }
+  else {
+    $parsedJSON = $ruleJSON  
+  }
+ 
   $parsedJSON | Write-Log
   # Begin section rules
   $EnvVar_with_Space_Pattern = "%\w+\s+\w+.*%"
@@ -1259,7 +1011,7 @@ NAME: Test-Rule
   $DetectedPathIssues = @()
  
   # first check regexs on file path - this is the most common issue
-  "Evaluating rule $displayName" | Write-Log
+  "Evaluating rule $displayName" | Write-Log -WriteStdOut
   # validate that any env. vars are in the default list
   if ( $filepath -match "%(\w+)%.*" ) {
     if ($Matches[1] -in $defaultEnvVars) {
@@ -1294,8 +1046,42 @@ NAME: Test-Rule
  
 }
 #################################################### 
+ 
+Function Test-JSON() {
 
-#endregion
+  <#
+  .SYNOPSIS
+  This function is used to test if the JSON passed to a REST Post request is valid
+  .DESCRIPTION
+  The function tests if the JSON passed to the REST Post is valid
+  .EXAMPLE
+  Test-JSON -JSON $JSON
+  Test if the JSON is valid before calling the Graph REST interface
+  .NOTES
+  NAME: Test-JSON
+  #>
+  
+  param ($JSON)
+  
+  $validJson = $false
+  
+  try {
+    $null = ConvertFrom-Json $JSON -ErrorAction Stop
+    $validJson = $true  
+  }
+
+  catch {  
+    $validJson = $false
+    $_.Exception  
+  }
+
+  $validJson
+
+}
+
+
+
+#endregion functions
 #################################################### 
 
 
@@ -1361,9 +1147,12 @@ $ErrorActionPreference = "Stop"
 # set to true for verbose logging
 $global:debugMode = $Debug
 $line = "=" * 120
-$FirewallPolicys = @() 
+ 
+# Debug log for engineering
 $global:LogName = Join-Path -Path $env:temp -ChildPath  $("Test-IntuneFirewallRules_$((Get-Date -Format u) -replace "[\s:]","_").log")
+# Error log with any imported rules that fail to create local rules
 $global:ErrorLogName = Join-Path -Path $env:temp -ChildPath  $("Test-IntuneFirewallRules_Errors_$((Get-Date -Format u) -replace "[\s:]","_").log")
+# reporting object
 $global:detectedErrors = @() 
 
 Write-Log -WriteStdOut "`r`n$line`r`nStarting firewall policy evaluation `r`n$line`r`n"  -LogName $global:LogName  
@@ -1379,71 +1168,48 @@ if (-not (Test-IsEULAAccepted) ) {
   "EULA not accepted, exiting." | Write-Log -WriteStdOut
   break
 }
- 
-$FirewallPolicys += Get-FirewallPolicies
-$FirewallPolicys += Get-ConfigManFirewallPolicies
-$FirewallPolicys += Get-FWPolicyIntents
- 
 
-if ($debugMode) { $FirewallPolicys | Write-Log -Level Verbose }
-$FirewallPolicys = $FirewallPolicys | Sort-Object -Property isAssigned, displayName  
- 
-if ($FirewallPolicys) {
 
-  foreach ($Firewallpolicy in $Firewallpolicys) {
-    $firewallPolicyName = $Firewallpolicy.displayName
-    $isAssigned = $FirewallPolicy.isAssigned
-        
-    # Examine policy rules if 1) Default mode - policy is assigned
-    #                         2) -IncludeUnassignedPolicies commmand line switch is specified
-    #                         3) if -PolicyName command line switch (return policy whether enabled or not)
-    if ( ($isAssigned -eq $true) -or ($IncludeUnassignedPolicies) -or ($PolicyName) -or ($PolicyID)) {
-      Write-Log -WriteStdOut "*** Assigned firewall policy $firewallPolicyName found..."  
-                     
+############################
+#
+#   Ingest JSON generated by
+#   https://github.com/microsoftgraph/powershell-intune-samples/blob/master/EndpointSecurity/EndpointSecurityPolicy_Export.ps1
+#   from Intune PowerShell Samples Repo
 
-      # don't process imported firewall global settings - these are firewall config, not settings
-      if ( $FirewallPolicy.definitionId -match "windows10EndpointProtectionConfiguration") {
-        Write-Log "Skipping policy $firewallPolicyName ($($parsedJSON.definitionId)) because it is a config policy(windows10EndpointProtectionConfiguration)."
-      } else {
-        $Rules = (Get-FireWallRules -id $Firewallpolicy.id).valueJson   
-        foreach ($Rule in $Rules) {
+if ($RuleJSON) {
+  $JSONfromFile = (Get-Content -Path $RuleJSON -Raw)  | ConvertFrom-Json
+
+  if ( Test-JSON -JSON $JSONfromFile.settingsDelta.valueJson) {
+    "JSON validated" | Write-Log -WriteStdOut
+    $Rules = $JSONfromFile.settingsDelta.valueJson  
+    $firewallPolicyName = $JSONfromFile.displayName
+
+    foreach ($Rule in $Rules) {
           # skip config settings, only process JSON rules in the format [{.*}]
           if ($Rule -match "\[\{.*\}\]") {
-            $ruleJSONs = $Rule | ConvertFrom-Json
-            foreach ($ruleJSON in $ruleJSONs) {
-              Test-Rule -ruleJSON $ruleJSON -PolicyName $firewallPolicyName
-            }
-          } else {
-            if ($debugMode) {
-              Write-Log -Level Verbose "Skipping rule with value $rule.  Most likely config setting, not firewall rule."
+              $IndividualFWRuleJSONs = $Rule | ConvertFrom-Json
+              foreach ($IndividualFWRuleJSON in $IndividualFWRuleJSONs) {
+                Test-Rule -ruleJSON $IndividualFWRuleJSON -PolicyName $firewallPolicyName
             }
           }
-                             
-        }
-        "`r`n$line`r`nPolicy $firewallPolicyName evaluation complete.`r`n$line" | Write-Log -WriteStdOut
-      } 
-    } else {
-      Write-Log "Firewall policy $firewallPolicyName is not assigned.  Skipping" -WriteStdOut -Level Warning
     }
-        
+  
+  } else {
+    "Error in JSON, exiting" | Write-Log -WriteStdOut
   }
 }
+ 
 
-
-else { 
-  Write-Log "No firewall rules found..."  -WriteStdOut -Level Warning
-}
-
+# Create and display report
 New-HTMLReport -resultBlob $global:detectedErrors
 $global:detectedErrors |  Format-List | Out-File $global:ErrorLogName -Force -Append
 New-HTMLReport -resultBlob $global:detectedErrors
-
-# Cleanup
-Remove-TestFirewallRules
-Start-Process $LogName
-
 if (Test-Path $env:temp\FirewallRuleTests.html) {
   Start-Process "$env:temp\FirewallRuleTests.html"
 }
+ 
+# Cleanup - delete test rules
+Remove-TestFirewallRules
+
 
 #endregion
