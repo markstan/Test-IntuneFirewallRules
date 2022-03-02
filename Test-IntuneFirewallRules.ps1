@@ -10,7 +10,7 @@ Test-IntuneFirewallRules.ps1
 Utility for testing Intune Firewall Rules
 Author: Mark Stanfill (markstan@microsoft.com)
 Published:  1/21/2022
-Last Updateed: 2/21/2022
+Last Updateed: 3/1/2022
 
 #>
 
@@ -27,8 +27,7 @@ Param (
   # bypass EULA check
   [switch]$AcceptEULA,
   # ingest JSON exported from EndpointSecurityPolicy_Export.ps1
-  [string]$RuleJSON
-
+  [string]$RuleJSON 
 
 )
 
@@ -105,11 +104,11 @@ Set $global:LogName at the beginning of the script
  
 function Test-IsEULAAccepted {
    
-  <#
+<#
 .SYNOPSIS
  Show warning about firewall creation and how to remedy any artifacts left by the script 
 .DESCRIPTION
- Informs admin of changes made to local device.  Prompts admin to acknoledged
+ Informs admin of changes made to local device.  Prompts admin to acknowledged
 .EXAMPLE
 Test-IsEULAAccepted
  
@@ -120,12 +119,12 @@ Bypass at script-level with Test-IntuneFirewallRules.ps1 -AcceptEULA
 #>
 
   [string]$message =
-  @"  
-  Warning:  This script will create test firewall rules on the device it is ran on.  These rules are disabled and named with a `"____MSTestRule_DeleteMe____`" prefix.               
-  Rules will be automatically deleted when the script completes.
-  If there are any rules remaing (for instance, if the device reboots or the PowerShell window is closed while the script is running, run this command to delete remaining artifacts:
-                                                                                                                                                                                     
-  Test-IntuneFirewallRules.ps1 -DeleteTestFirewallRules
+@"  
+Warning:  This script will create test firewall rules on the device it is ran on.  These rules are disabled and named with a `"____MSTestRule_DeleteMe____`" prefix.               
+Rules will be automatically deleted when the script completes.
+If there are any rules remaing (for instance, if the device reboots or the PowerShell window is closed while the script is running, run this command to delete remaining artifacts:
+                                                                                                                                                                                  
+Test-IntuneFirewallRules.ps1 -DeleteTestFirewallRules
 "@
 
   [bool]$isEULAAccepted = $false
@@ -761,8 +760,9 @@ NAME: Test-FirewallRuleCreatesSuccessfully
 
     if ($argument -eq "notConfigured") {
       "Skipping notConfigured value $CommandLineSwitch" | Write-Log
-    } else {
-        
+    } 
+    else {
+      
       switch -Wildcard ($CommandLineSwitch) {
         'useAnyLocalAddressRange' { 
           $useAnyLocalAddressRange = $ConstructedCommandLineArgs[$CommandLineSwitch]
@@ -882,10 +882,18 @@ NAME: Test-FirewallRuleCreatesSuccessfully
         }
      
         Default {
-          if ("" -eq $CommandLineSwitch){}
+          if ("" -eq $CommandLineSwitch){
+            "Skipping null value for command line switch" | Write-Log
+          }
           else {
               $hashValue = $PropertyToSwitchMapping[$CommandLineSwitch] 
-              $ConstructedCommandLineArgs[$hashValue] = $argument
+              if ($hashValue){
+                $ConstructedCommandLineArgs[$hashValue] = $argument
+              }
+              else {
+                write-host "unknown mapping $CommandLineSwitch"
+              }
+              
           }
           
       
@@ -1009,6 +1017,8 @@ NAME: Test-Rule
   $filepath = $parsedJSON.filePath
   $displayName = $parsedJSON.displayName
   $DetectedPathIssues = @()
+  
+
  
   # first check regexs on file path - this is the most common issue
   "Evaluating rule $displayName" | Write-Log -WriteStdOut
@@ -1079,6 +1089,423 @@ Function Test-JSON() {
 
 }
 
+####################################################
+
+Function Get-EndpointSecurityPolicy(){
+
+<#
+.SYNOPSIS
+This function is used to get all Endpoint Security policies using the Graph API REST interface
+.DESCRIPTION
+The function connects to the Graph API Interface and gets all Endpoint Security templates
+.EXAMPLE
+Get-EndpointSecurityPolicy
+Gets all Endpoint Security Policies in Endpoint Manager
+.NOTES
+NAME: Get-EndpointSecurityPolicy
+#>
+
+
+$graphApiVersion = "Beta"
+$ESP_resource = "deviceManagement/intents"
+
+    try {
+
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($ESP_resource)"
+        (Invoke-RestMethod -Method Get -Uri $uri -Headers $authToken).value
+
+    }
+    
+    catch {
+
+    $ex = $_.Exception
+    $errorResponse = $ex.Response.GetResponseStream()
+    $reader = New-Object System.IO.StreamReader($errorResponse)
+    $reader.BaseStream.Position = 0
+    $reader.DiscardBufferedData()
+    $responseBody = $reader.ReadToEnd();
+    Write-Host "Response content:`n$responseBody" -f Red
+    Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
+    write-host
+    break
+
+    }
+
+}
+
+####################################################
+
+Function Get-EndpointSecurityTemplate(){
+
+  <#
+  .SYNOPSIS
+  This function is used to get all Endpoint Security templates using the Graph API REST interface
+  .DESCRIPTION
+  The function connects to the Graph API Interface and gets all Endpoint Security templates
+  .EXAMPLE
+  Get-EndpointSecurityTemplate 
+  Gets all Endpoint Security Templates in Endpoint Manager
+  .NOTES
+  NAME: Get-EndpointSecurityTemplate
+  #>
+  
+  
+  $graphApiVersion = "Beta"
+  $ESP_resource = "deviceManagement/templates?`$filter=(isof(%27microsoft.graph.securityBaselineTemplate%27))"
+  
+      try {
+  
+          $uri = "https://graph.microsoft.com/$graphApiVersion/$($ESP_resource)"
+          (Invoke-RestMethod -Method Get -Uri $uri -Headers $authToken).value
+  
+      }
+      
+      catch {
+  
+      $ex = $_.Exception
+      $errorResponse = $ex.Response.GetResponseStream()
+      $reader = New-Object System.IO.StreamReader($errorResponse)
+      $reader.BaseStream.Position = 0
+      $reader.DiscardBufferedData()
+      $responseBody = $reader.ReadToEnd();
+      Write-Host "Response content:`n$responseBody" -f Red
+      Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
+      write-host
+      break
+  
+      }
+  
+  }
+  
+
+
+####################################################
+
+Function Get-EndpointSecurityTemplateCategory(){
+
+<#
+.SYNOPSIS
+This function is used to get all Endpoint Security categories from a specific template using the Graph API REST interface
+.DESCRIPTION
+The function connects to the Graph API Interface and gets all template categories
+.EXAMPLE
+Get-EndpointSecurityTemplateCategory -TemplateId $templateId
+Gets an Endpoint Security Categories from a specific template in Endpoint Manager
+.NOTES
+NAME: Get-EndpointSecurityTemplateCategory
+#>
+
+[cmdletbinding()]
+
+param
+(
+    [Parameter(Mandatory=$true)]
+    [ValidateNotNullOrEmpty()]
+    $TemplateId
+)
+
+$graphApiVersion = "Beta"
+$ESP_resource = "deviceManagement/templates/$TemplateId/categories"
+
+    try {
+
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($ESP_resource)"
+        (Invoke-RestMethod -Method Get -Uri $uri -Headers $authToken).value
+
+    }
+    
+    catch {
+
+    $ex = $_.Exception
+    $errorResponse = $ex.Response.GetResponseStream()
+    $reader = New-Object System.IO.StreamReader($errorResponse)
+    $reader.BaseStream.Position = 0
+    $reader.DiscardBufferedData()
+    $responseBody = $reader.ReadToEnd();
+    Write-Host "Response content:`n$responseBody" -f Red
+    Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
+    write-host
+    break
+
+    }
+
+}
+
+####################################################
+
+Function Get-EndpointSecurityCategorySetting(){
+
+<#
+.SYNOPSIS
+This function is used to get an Endpoint Security category setting from a specific policy using the Graph API REST interface
+.DESCRIPTION
+The function connects to the Graph API Interface and gets a policy category setting
+.EXAMPLE
+Get-EndpointSecurityCategorySetting -PolicyId $policyId -categoryId $categoryId
+Gets an Endpoint Security Categories from a specific template in Endpoint Manager
+.NOTES
+NAME: Get-EndpointSecurityCategory
+#>
+
+[cmdletbinding()]
+
+param
+(
+    [Parameter(Mandatory=$true)]
+    [ValidateNotNullOrEmpty()]
+    $PolicyId,
+    [Parameter(Mandatory=$true)]
+    [ValidateNotNullOrEmpty()]
+    $categoryId
+)
+
+$graphApiVersion = "Beta"
+$ESP_resource = "deviceManagement/intents/$policyId/categories/$categoryId/settings?`$expand=Microsoft.Graph.DeviceManagementComplexSettingInstance/Value"
+
+    try {
+
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($ESP_resource)"
+        (Invoke-RestMethod -Method Get -Uri $uri -Headers $authToken).value
+
+    }
+    
+    catch {
+
+    $ex = $_.Exception
+    $errorResponse = $ex.Response.GetResponseStream()
+    $reader = New-Object System.IO.StreamReader($errorResponse)
+    $reader.BaseStream.Position = 0
+    $reader.DiscardBufferedData()
+    $responseBody = $reader.ReadToEnd();
+    Write-Host "Response content:`n$responseBody" -f Red
+    Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
+    write-host
+    break
+
+    }
+
+}
+
+####################################################
+
+Function Export-JSONData(){
+
+<#
+.SYNOPSIS
+This function is used to export JSON data returned from Graph
+.DESCRIPTION
+This function is used to export JSON data returned from Graph
+.EXAMPLE
+Export-JSONData -JSON $JSON
+Export the JSON inputted on the function
+.NOTES
+NAME: Export-JSONData
+#>
+
+param (
+
+$JSON,
+$ExportPath
+
+)
+
+    try {
+
+        if($JSON -eq "" -or $JSON -eq $null){
+
+        write-host "No JSON specified, please specify valid JSON..." -f Red
+
+        }
+
+        elseif(!$ExportPath){
+
+        write-host "No export path parameter set, please provide a path to export the file" -f Red
+
+        }
+
+        elseif(!(Test-Path $ExportPath)){
+
+        write-host "$ExportPath doesn't exist, can't export JSON Data" -f Red
+
+        }
+
+        else {
+
+        $JSON1 = ConvertTo-Json $JSON -Depth 5
+
+        $JSON_Convert = $JSON1 | ConvertFrom-Json
+
+        $displayName = $JSON_Convert.displayName
+
+        # Updating display name to follow file naming conventions - https://msdn.microsoft.com/en-us/library/windows/desktop/aa365247%28v=vs.85%29.aspx
+        $DisplayName = $DisplayName -replace '\<|\>|:|"|/|\\|\||\?|\*', "_"
+
+            # Added milliseconds to date format due to duplicate policy name
+            $FileName_JSON = "$DisplayName" + "_" + $(get-date -f dd-MM-yyyy-H-mm-ss.fff) + ".json"
+
+            write-host "Export Path:" "$ExportPath"
+
+            $JSON1 | Set-Content -LiteralPath "$ExportPath\$FileName_JSON"
+            write-host "JSON created in $ExportPath\$FileName_JSON..." -f cyan
+            
+        }
+
+    }
+
+    catch {
+
+    $_.Exception
+
+    }
+
+}
+
+Function Export-Templates {
+
+  <#
+  .SYNOPSIS
+  Exports rules from Graph API
+  .DESCRIPTION
+  This function is used to export JSON data returned from Graph.  Returns an list of generated files.
+  .EXAMPLE
+  Export-Templates 
+  .NOTES
+  NAME: Export-Templates 
+  #>
+    
+  # Get all Endpoint Security Templates
+  $Templates = Get-EndpointSecurityTemplate
+
+  ####################################################
+
+  # Get all Endpoint Security Policies configured
+  $ESPolicies = Get-EndpointSecurityPolicy | Sort-Object displayName
+
+  ####################################################
+
+  # Looping through all policies configured
+  foreach($policy in $ESPolicies){
+
+      
+      $PolicyName = $policy.displayName
+      $PolicyDescription = $policy.description
+      $policyId = $policy.id
+      $TemplateId = $policy.templateId
+      $roleScopeTagIds = $policy.roleScopeTagIds
+
+      "Endpoint Security Policy: $PolicyName" |  Write-Log -WriteStdOut 
+      $ES_Template = $Templates | Where-Object  { $_.id -eq $policy.templateId }
+
+      $TemplateDisplayName = $ES_Template.displayName
+      $TemplateId = $ES_Template.id
+      $versionInfo = $ES_Template.versionInfo
+
+      if($TemplateDisplayName -eq "Endpoint detection and response"){
+
+        "Export of 'Endpoint detection and response' policy not included in sample script..."  |  Write-Log -WriteStdOut         
+      }
+
+      else {
+
+          ####################################################
+
+          # Creating object for JSON output
+          $JSON = New-Object -TypeName PSObject
+
+          Add-Member -InputObject $JSON -MemberType 'NoteProperty' -Name 'displayName' -Value "$PolicyName"
+          Add-Member -InputObject $JSON -MemberType 'NoteProperty' -Name 'description' -Value "$PolicyDescription"
+          Add-Member -InputObject $JSON -MemberType 'NoteProperty' -Name 'roleScopeTagIds' -Value $roleScopeTagIds
+          Add-Member -InputObject $JSON -MemberType 'NoteProperty' -Name 'TemplateDisplayName' -Value "$TemplateDisplayName"
+          Add-Member -InputObject $JSON -MemberType 'NoteProperty' -Name 'TemplateId' -Value "$TemplateId"
+          Add-Member -InputObject $JSON -MemberType 'NoteProperty' -Name 'versionInfo' -Value "$versionInfo"
+
+          ####################################################
+
+          # Getting all categories in specified Endpoint Security Template
+          $Categories = Get-EndpointSecurityTemplateCategory -TemplateId $TemplateId
+
+          # Looping through all categories within the Template
+
+          foreach($category in $Categories){
+
+              $categoryId = $category.id
+
+              $Settings += Get-EndpointSecurityCategorySetting -PolicyId $policyId -categoryId $categoryId
+          
+          }
+
+          # Adding All settings to settingsDelta ready for JSON export
+          Add-Member -InputObject $JSON -MemberType 'NoteProperty' -Name 'settingsDelta' -Value @($Settings)
+
+          ####################################################
+
+          Export-JSONData -JSON $JSON -ExportPath $pwd
+
+          Write-Host
+
+          # Clearing up variables so previous data isn't exported in each policy
+          Clear-Variable JSON
+          Clear-Variable Settings
+
+      }
+
+    }   
+
+}
+
+function Test-RulesFromJSONFiles {
+  
+  <#
+  .SYNOPSIS
+  Iterate through JSON files 
+  .DESCRIPTION
+  Evaluates JSON files and tests individual rules
+  .EXAMPLE
+  Test-RulesFromJSONFiles
+  .NOTES
+  NAME: Test-RulesFromJSONFiles
+  #>
+  foreach ($Rule in $RuleJSON){
+    "Processing $rule" | Write-Log -WriteStdOut
+    # taking out -Raw for compat
+    $JSONfromFile = (Get-Content -Path $Rule )  | ConvertFrom-Json
+    
+    # make sure JSON is valid before attempting to parse rules
+    $isJSONValidated = $false
+    $isJSONValidated = Test-JSON -JSON $JSONfromFile.settingsDelta.valueJson
+
+    if ( $isJSONValidated) {
+      "JSON validated" | Write-Log -WriteStdOut
+      $Rules = $JSONfromFile.settingsDelta.valueJson  
+      $firewallPolicyName = $JSONfromFile.displayName
+      $templateID = $JSONfromFile.TemplateId
+
+      # special case for security baseline templates.  These contain policies, but no rules
+      # Example: MDM Security Baseline for Windows 10 and later for Decemeber 2020
+      if ($templateID -ne "4356d05c-a4ab-4a07-9ece-739f7c792910") {
+        "Skipping baseline template file $rule" | Write-Log  
+      }
+      else {
+        foreach ($Rule in $Rules) {
+          # skip config settings, only process JSON rules in the format [{.*}]
+          if ($Rule -match "\[\{.*\}\]") {
+              $IndividualFWRuleJSONs = $Rule | ConvertFrom-Json
+              foreach ($IndividualFWRuleJSON in $IndividualFWRuleJSONs) {
+                Test-Rule -ruleJSON $IndividualFWRuleJSON -PolicyName $firewallPolicyName
+            }
+          }
+        }
+  
+
+    }
+
+
+    } 
+  else {
+      "Error in JSON, exiting" | Write-Log -WriteStdOut
+    }
+}
+}
 
 
 #endregion functions
@@ -1176,39 +1603,66 @@ if (-not (Test-IsEULAAccepted) ) {
 #   https://github.com/microsoftgraph/powershell-intune-samples/blob/master/EndpointSecurity/EndpointSecurityPolicy_Export.ps1
 #   from Intune PowerShell Samples Repo
 
-if ($RuleJSON) {
-  $JSONfromFile = (Get-Content -Path $RuleJSON -Raw)  | ConvertFrom-Json
+#   If script is ran from the folder where EndpointSecurity/EndpointSecurityPolicy_Export.ps1 data has been exported,
+#   prompt user to test all files in the folder
 
-  if ( Test-JSON -JSON $JSONfromFile.settingsDelta.valueJson) {
-    "JSON validated" | Write-Log -WriteStdOut
-    $Rules = $JSONfromFile.settingsDelta.valueJson  
-    $firewallPolicyName = $JSONfromFile.displayName
 
-    foreach ($Rule in $Rules) {
-          # skip config settings, only process JSON rules in the format [{.*}]
-          if ($Rule -match "\[\{.*\}\]") {
-              $IndividualFWRuleJSONs = $Rule | ConvertFrom-Json
-              foreach ($IndividualFWRuleJSON in $IndividualFWRuleJSONs) {
-                Test-Rule -ruleJSON $IndividualFWRuleJSON -PolicyName $firewallPolicyName
-            }
-          }
+# If script is ran with no arguments, test to see if JSON files are present.  If not, give the user a choice to 
+# automatically download and process JSON data from Graph
+ 
+if ( $PSBoundParameters.Values.Count -eq 0 -and $args.count -eq 0 ) {
+  $JSONFiles = @()
+  $JSONFiles = Get-ChildItem $pwd\*.json
+
+    ############################
+  # Scenario 1: Test data exported by EndpointSecurity/EndpointSecurityPolicy_Export.ps1
+
+  if ( $JSONFiles) {
+    Write-Host "`r`n`r`n$line$stars" -ForegroundColor Green
+    write-host "JSON files detected in current folder.`r`n" -ForegroundColor Green
+    Write-Host "Type (Y)es to test firewall rules from JSON files in current folder, any other key to exit" -ForegroundColor Green
+    Write-Host "Choose this option if firewall rules were exported using EndpointSecurityPolicy_Export.ps1" -ForegroundColor Green
+
+    $response = Read-Host
+
+    if ($response -match "^Y") {
+      $RuleJSON = $JSONFiles
     }
-  
-  } else {
-    "Error in JSON, exiting" | Write-Log -WriteStdOut
   }
+  ############################
+  # Scenario 2: Connect to Intune, export all firewall policies and test them automatically
+  
+  else   {  
+    $RuleJSON = Export-Templates  
+  }
+  
 }
  
 
+# Process rules if files exist
+if ($RuleJSON) {  
+  Test-RulesFromJSONFiles
+}
+else {
+  "No JSON files found in $pwd. Exiting." | Write-Log -WriteStdOut
+  break
+}
+
+
+ 
+############################
 # Create and display report
+
 New-HTMLReport -resultBlob $global:detectedErrors
 $global:detectedErrors |  Format-List | Out-File $global:ErrorLogName -Force -Append
 New-HTMLReport -resultBlob $global:detectedErrors
 if (Test-Path $env:temp\FirewallRuleTests.html) {
   Start-Process "$env:temp\FirewallRuleTests.html"
 }
- 
+
+############################
 # Cleanup - delete test rules
+
 Remove-TestFirewallRules
 
 
