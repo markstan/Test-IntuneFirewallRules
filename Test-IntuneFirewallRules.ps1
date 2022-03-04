@@ -17,7 +17,7 @@ Version: 1.0
 ####################################################
 
 Param (
-  [string]$PolicyName ,
+  [string]$PolicyName,
   [string]$PolicyID,
   [bool]$Debug = $false,
   # clean up test rules standalone option
