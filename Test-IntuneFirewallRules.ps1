@@ -27,7 +27,7 @@ Param (
   # bypass EULA check
   [switch]$AcceptEULA,
   # ingest JSON exported from EndpointSecurityPolicy_Export.ps1
-  [string]$RuleJSON 
+  $RuleJSON 
 
 )
 
