@@ -1,5 +1,4 @@
-﻿
-<#
+﻿<#
 
 .COPYRIGHT
 Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT license.
@@ -10,7 +9,8 @@ Test-IntuneFirewallRules.ps1
 Utility for testing Intune Firewall Rules
 Author: Mark Stanfill (markstan@microsoft.com)
 Published:  1/21/2022
-Last Updateed: 3/1/2022
+Last Updated: 3/4/2022
+Version: 1.0
 
 #>
 
@@ -27,7 +27,7 @@ Param (
   # bypass EULA check
   [switch]$AcceptEULA,
   # ingest JSON exported from EndpointSecurityPolicy_Export.ps1
-  $RuleJSON 
+  $RuleJSON
 
 )
 
@@ -224,7 +224,7 @@ NAME: Get-SuggestedAction
 # Returns True if Admin, False if not
 Function Test-IsAdmin {
    
-  <#
+<#
 .SYNOPSIS
 Determines if script is being ran in elevated (admin) context 
 .DESCRIPTION
@@ -244,7 +244,8 @@ NAME: Test-IsAdmin
     [Security.Principal.WindowsIdentity]::GetCurrent() `
       ).IsInRole($ADMINISTRATORS)
 }
-  
+
+####################################################  
 function Get-AuthToken {
 
   <#
@@ -380,7 +381,6 @@ function Get-AuthToken {
   }
     
 }
-
  
 
 ####################################################
@@ -735,9 +735,6 @@ NAME: Test-FirewallRuleCreatesSuccessfully
   $stars = '*' * 80
   $pluses = '+' * 80
   # always create the rule disabled so that we don't inadvertantly block traffic
-  # For reference, also loads assembly
-  Get-NetFirewallSetting | Write-Log
-   
   $enabled = [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.Enabled]::False
   $testString = "____MSTestRule_DeleteMe____"
   $errMsg = ""
@@ -859,7 +856,13 @@ NAME: Test-FirewallRuleCreatesSuccessfully
 
           foreach ($interfaceType in $interfaceTypes) { 
             "interfaceType:  $interfaceType" | Write-Log -WriteStdOut
-            $interfaceTypeEnum += $interfaceType 
+                switch ($interfaceType) {
+                    "Any" { $interfaceTypeEnum += [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.InterfaceType]::Any }
+                    "Lan"  { $interfaceTypeEnum += [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.InterfaceType]::Wired }  
+                    "wireless"  { $interfaceTypeEnum += [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.InterfaceType]::Wireless }  
+                    "remoteAccess" { $interfaceTypeEnum += [Microsoft.PowerShell.Cmdletization.GeneratedTypes.NetSecurity.InterfaceType]::RemoteAccess }  
+                 }
+                
           } 
             
           $ConstructedCommandLineArgs['interfaceType'] = $interfaceTypeEnum
@@ -1179,8 +1182,6 @@ Function Get-EndpointSecurityTemplate(){
       }
   
   }
-  
-
 
 ####################################################
 
@@ -1363,6 +1364,8 @@ $ExportPath
 
 }
 
+#################################################### 
+
 Function Export-Templates {
 
   <#
@@ -1454,6 +1457,8 @@ Function Export-Templates {
 
 }
 
+#################################################### 
+
 function Test-RulesFromJSONFiles {
   
   <#
@@ -1511,21 +1516,23 @@ function Test-RulesFromJSONFiles {
 }
 }
 
-
-#endregion functions
 #################################################### 
+function Check-IsUserAuthenticated {
+<#
+.SYNOPSIS
+Test to see if user is authenticated to Graph API
+.DESCRIPTION
+Check if user is authenticated.  If not, prompt for credentials
+.EXAMPLE
+Check-IsUserAuthenticated
+ 
+.NOTES
+NAME: Check-IsUserAuthenticated
+#> 
 
 
-#region Authentication
-# validate that user is local admin running elevate for firewall rule creation
-if (-not (Test-IsAdmin) ) {
-  Return "Please run PowerShell elevated (run as administrator) and run the script again."
-  Break
-} 
-
-
-# Checking if authToken exists before running authentication
-if ($global:authToken) {
+  # Checking if authToken exists before running authentication
+  if ($global:authToken) {
 
   # Setting DateTime to Universal time to work in all timezones
   $DateTime = (Get-Date).ToUniversalTime()
@@ -1550,11 +1557,11 @@ if ($global:authToken) {
     $global:authToken = Get-AuthToken -User $User
 
   }
-}
+    }
 
-# Authentication doesn't exist, calling Get-AuthToken function
+    # Authentication doesn't exist, calling Get-AuthToken function
 
-else {
+                            else {
   if ( ($null -eq $User) -or ($User -eq "")) {
 
     $User = Read-Host -Prompt "Please specify your user principal name for Azure Authentication"
@@ -1564,10 +1571,13 @@ else {
   # Getting the authorization token
   $global:authToken = Get-AuthToken -User $User
 
+    }
+
 }
 
-#endregion
- 
+#endregion functions
+####################################################
+
 #region Main
 
 ####################################################
@@ -1578,6 +1588,13 @@ $ErrorActionPreference = "Stop"
 # set to true for verbose logging
 $global:debugMode = $Debug
 $line = "=" * 120
+
+# validate that user is local admin running elevate for firewall rule creation
+if (-not (Test-IsAdmin) ) {
+      Return "Please run PowerShell elevated (run as administrator) and run the script again."
+      Break
+    } 
+
  
 # Debug log for engineering
 $global:LogName = Join-Path -Path $env:temp -ChildPath  $("Test-IntuneFirewallRules_$((Get-Date -Format u) -replace "[\s:]","_").log")
@@ -1639,6 +1656,7 @@ if ( $PSBoundParameters.Values.Count -eq 0 -and $args.count -eq 0 ) {
   # Scenario 2: Connect to Intune, export all firewall policies and test them automatically
   
   else   {  
+    Check-IsUserAuthenticated
     Export-Templates  
     $RuleJSON = Get-ChildItem $pwd\*.json
   }
@@ -1667,7 +1685,7 @@ $HTMLFileName = New-HTMLReport -resultBlob $global:detectedErrors
 if (Test-Path $HTMLFileName) {
   Start-Process $HTMLFileName
 }
-
+ 
 ############################
 # Cleanup - delete test rules
 
