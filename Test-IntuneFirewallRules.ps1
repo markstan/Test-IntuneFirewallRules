@@ -515,7 +515,7 @@ NAME: New-HTMLReport
 
     
   $xml = $resultBlob | ConvertTo-Xml -NoTypeInformation -As Document
-  $xml.InnerXML     |  Out-File WindowsHealthTests.xml -Force
+  $xml.InnerXML      |  Out-File WindowsHealthTests.xml -Force
  
   $head = @'
 <style>
@@ -564,10 +564,11 @@ td.red { color: red; }
   $script = @'
 <script>
 window.onload = function() {
-    const headings = document.querySelectorAll('tr th')
-    const col = Array.from(headings).find(hd => hd.innerHTML === "Test Result")
-    const inx = Array.from(col.parentNode.children).indexOf(col)
-    const cells = col.closest('table').querySelectorAll(`td:nth-child(${inx+1})`)
+    const headings = document.querySelectorAll('tr th');
+    const col = Array.from(headings).find(hd => hd.innerHTML === "Test Result");
+    const inx = Array.from(col.parentNode.children).indexOf(col);
+    const cells = col.closest('table').querySelectorAll(`td:nth-child(${inx+1})`);
+  
 
     Array.from(cells).map((td) => {
         switch (td.innerHTML) {
@@ -582,13 +583,14 @@ window.onload = function() {
                 break
         }
     })
-
+    
     Array.from(headings).map((hd) => {
       hd.addEventListener('click', (e) => {
         sortTable(e.target.cellIndex)
         activeColumn(e)
       })
     })
+     
 }
 
 function activeColumn(e) {
@@ -693,9 +695,10 @@ function resetTableRows(trs) {
 </script>
 '@
   $html = $resultBlob | ConvertTo-Html -Head $head -Body $script -PreContent $preContent
-  $HTMLFileName = Join-Path $env:temp "FirewallRuleTests.html"
+  $now = (Get-Date).ToString("ddMMyyyyhhmmss")
+  $HTMLFileName = Join-Path $env:temp "FirewallRuleTests-$now.html"
   $html | Out-File -FilePath $HTMLFileName -Force
-
+  $HTMLFileName
 
 }
  
@@ -1464,7 +1467,10 @@ function Test-RulesFromJSONFiles {
   NAME: Test-RulesFromJSONFiles
   #>
   foreach ($Rule in $RuleJSON){
-    "Processing $rule" | Write-Log -WriteStdOut
+    $line               | Write-Log -WriteStdOut
+    "Processing $rule"  | Write-Log -WriteStdOut
+    $line               | Write-Log -WriteStdOut
+    " "                 | Write-Log -WriteStdOut
     # taking out -Raw for compat
     $JSONfromFile = (Get-Content -Path $Rule )  | ConvertFrom-Json
     
@@ -1579,6 +1585,8 @@ $global:LogName = Join-Path -Path $env:temp -ChildPath  $("Test-IntuneFirewallRu
 $global:ErrorLogName = Join-Path -Path $env:temp -ChildPath  $("Test-IntuneFirewallRules_Errors_$((Get-Date -Format u) -replace "[\s:]","_").log")
 # reporting object
 $global:detectedErrors = @() 
+# Log settings for reference, also loads assembly
+Get-NetFirewallSetting | Write-Log
 
 Write-Log -WriteStdOut "`r`n$line`r`nStarting firewall policy evaluation `r`n$line`r`n"  -LogName $global:LogName  
 
@@ -1653,11 +1661,11 @@ else {
 ############################
 # Create and display report
 
-New-HTMLReport -resultBlob $global:detectedErrors
+#New-HTMLReport -resultBlob $global:detectedErrors
 $global:detectedErrors |  Format-List | Out-File $global:ErrorLogName -Force -Append
-New-HTMLReport -resultBlob $global:detectedErrors
-if (Test-Path $env:temp\FirewallRuleTests.html) {
-  Start-Process "$env:temp\FirewallRuleTests.html"
+$HTMLFileName = New-HTMLReport -resultBlob $global:detectedErrors
+if (Test-Path $HTMLFileName) {
+  Start-Process $HTMLFileName
 }
 
 ############################
