@@ -1440,9 +1440,7 @@ Function Export-Templates {
           ####################################################
 
           Export-JSONData -JSON $JSON -ExportPath $pwd
-
-          Write-Host
-
+ 
           # Clearing up variables so previous data isn't exported in each policy
           Clear-Variable JSON
           Clear-Variable Settings
@@ -1633,7 +1631,8 @@ if ( $PSBoundParameters.Values.Count -eq 0 -and $args.count -eq 0 ) {
   # Scenario 2: Connect to Intune, export all firewall policies and test them automatically
   
   else   {  
-    $RuleJSON = Export-Templates  
+    Export-Templates  
+    $RuleJSON = Get-ChildItem $pwd\*.json
   }
   
 }
@@ -1642,6 +1641,7 @@ if ( $PSBoundParameters.Values.Count -eq 0 -and $args.count -eq 0 ) {
 # Process rules if files exist
 if ($RuleJSON) {  
   Test-RulesFromJSONFiles
+  
 }
 else {
   "No JSON files found in $pwd. Exiting." | Write-Log -WriteStdOut
