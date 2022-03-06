@@ -4,6 +4,7 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+
         {   //validated
            "type":"PowerShell",
            "request": "launch",
@@ -35,6 +36,20 @@
          },
 
 
+         {  //
+            "type":"PowerShell",
+            "request": "launch",
+            "name": "AnyProtPortApp",
+            "script": "${file}",
+            "args": [ "-AcceptEULA", "-RuleJSON", "c:\\temp\\jerry\\export\\AnyProtocolWithFilePath_04-03-2022-16-56-01.642.json"]
+         },
+   {  //
+            "type":"PowerShell",
+            "request": "launch",
+            "name": "Launch Default with AcceptEula",
+            "script": "${file}",
+            "args": [ "-AcceptEULA"]
+         }
          
 
          

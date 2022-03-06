@@ -17,7 +17,7 @@ Version: 1.0
 ####################################################
 
 Param (
-  [string]$PolicyName ,
+  [string]$PolicyName,
   [string]$PolicyID,
   [bool]$Debug = $false,
   # clean up test rules standalone option
@@ -514,8 +514,8 @@ NAME: New-HTMLReport
   Param ($resultBlob)
 
     
-  $xml = $resultBlob | ConvertTo-Xml -NoTypeInformation -As Document
-  $xml.InnerXML      |  Out-File WindowsHealthTests.xml -Force
+ # $xml = $resultBlob | ConvertTo-Xml -NoTypeInformation -As Document
+ # $xml.InnerXML      |  Out-File $env:temp\WindowsHealthTests.xml -Force
  
   $head = @'
 <style>
@@ -1315,7 +1315,12 @@ $ExportPath
 
     try {
 
-        if($JSON -eq "" -or $JSON -eq $null){
+        if ( -not (Test-Path $ExportPath  ) ) {
+          "Creating tempory folder $exportPath" | Write-Log
+          mkdir $ExportPath -Force
+        }
+
+        if($JSON -eq "" -or $null -eq $JSON){
 
         write-host "No JSON specified, please specify valid JSON..." -f Red
 
@@ -1378,6 +1383,7 @@ Function Export-Templates {
   .NOTES
   NAME: Export-Templates 
   #>
+  param($exportFolder)
     
   # Get all Endpoint Security Templates
   $Templates = Get-EndpointSecurityTemplate
@@ -1445,7 +1451,7 @@ Function Export-Templates {
 
           ####################################################
 
-          Export-JSONData -JSON $JSON -ExportPath $pwd
+          Export-JSONData -JSON $JSON -ExportPath $exportFolder
  
           # Clearing up variables so previous data isn't exported in each policy
           Clear-Variable JSON
@@ -1517,17 +1523,17 @@ function Test-RulesFromJSONFiles {
 }
 
 #################################################### 
-function Check-IsUserAuthenticated {
+function Test-IsUserAuthenticated {
 <#
 .SYNOPSIS
 Test to see if user is authenticated to Graph API
 .DESCRIPTION
 Check if user is authenticated.  If not, prompt for credentials
 .EXAMPLE
-Check-IsUserAuthenticated
+Test-IsUserAuthenticated
  
 .NOTES
-NAME: Check-IsUserAuthenticated
+NAME: Test-IsUserAuthenticated
 #> 
 
 
@@ -1632,8 +1638,14 @@ if (-not (Test-IsEULAAccepted) ) {
 
 # If script is ran with no arguments, test to see if JSON files are present.  If not, give the user a choice to 
 # automatically download and process JSON data from Graph
- 
-if ( $PSBoundParameters.Values.Count -eq 0 -and $args.count -eq 0 ) {
+$PSBoundParameters.Values.Count
+
+$args.count 
+if (  ( $PSBoundParameters.Values.Count -eq 0 -and $args.count -eq 0 ) `
+      -or                                                              `
+      ($PSBoundParameters.Values.Count -eq 1 -and $args.count -eq 0 -and $AcceptEULA)
+
+  ){
   $JSONFiles = @()
   $JSONFiles = Get-ChildItem $pwd\*.json
 
@@ -1643,7 +1655,7 @@ if ( $PSBoundParameters.Values.Count -eq 0 -and $args.count -eq 0 ) {
   if ( $JSONFiles) {
     Write-Host "`r`n`r`n$line$stars" -ForegroundColor Green
     write-host "JSON files detected in current folder.`r`n" -ForegroundColor Green
-    Write-Host "Type (Y)es to test firewall rules from JSON files in current folder, any other key to exit" -ForegroundColor Green
+    Write-Host "Type (Y)es to test firewall rules from JSON files in current folder, any other key to exit`r`n" -ForegroundColor Green
     Write-Host "Choose this option if firewall rules were exported using EndpointSecurityPolicy_Export.ps1" -ForegroundColor Green
 
     $response = Read-Host
@@ -1656,9 +1668,13 @@ if ( $PSBoundParameters.Values.Count -eq 0 -and $args.count -eq 0 ) {
   # Scenario 2: Connect to Intune, export all firewall policies and test them automatically
   
   else   {  
-    Check-IsUserAuthenticated
-    Export-Templates  
-    $RuleJSON = Get-ChildItem $pwd\*.json
+    Test-IsUserAuthenticated
+
+    $exportFolderName = "FWJSON" +  (Get-Date).ToString("ddMMyyyyhhmmss")
+    $exportpath = Join-Path $env:temp $exportFolderName
+
+    Export-Templates  -exportFolder $exportpath
+    $RuleJSON = Get-ChildItem $exportpath\*.json
   }
   
 }
