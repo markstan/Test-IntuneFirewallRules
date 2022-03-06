@@ -171,7 +171,9 @@ NAME: Get-SuggestedAction
   param (
     $ExceptionInfo,
     $DetectedPathIssues,
-    $FilePath
+    $FilePath,
+    $Port,
+    $Protocol
   )
 
   [string]$Remediation = ""
@@ -185,8 +187,6 @@ NAME: Get-SuggestedAction
 
     "The parameter is incorrect*" { 
         
-        
-
       switch -Wildcard ($DetectedPathIssues) {
         "*space pattern*" { 
           $envVar = $FilePath -replace "(%.*%)(.*)", "`$1"
@@ -208,7 +208,33 @@ NAME: Get-SuggestedAction
            
       }
     }
+
+    "The application contains invalid characters, or is an invalid length*" {
+
+      $IllegalPathChars =  -join [System.IO.Path]::GetInvalidPathChars().Foreach{('\x{0:x2}' -f ([Byte][Char]$_))}    
+      $IllegalFileChars = -join [System.IO.Path]::GetInvalidFileNameChars().Foreach{('\x{0:x2}' -f ([Byte][Char]$_))}    
+      $IllegalPathRegex = "[$IllegalPathChars]"
+      $IllegalFileRegex = "[$IllegalFileChars]"
+
+      $null = $FilePath -match "^(?<Path>.*)\\(?<FileName>.*)$"
+      $IllegalPathChars = [regex]::Matches($Matches['Path'],     $IllegalPathRegex, 'IgnoreCase').Value  
+      $IllegalFileChars = [regex]::Matches($Matches['Filename'], $IllegalFileRegex, 'IgnoreCase').Value  
+
+ 
+      $Remediation = "Verify that $Filepath is a legal Windows path."                                   
+      if ($IllegalPathChars) { $Remediation += "  Illegal characters in path: `"$IllegalPathChars`"." }                                            
+      if ($IllegalFileChars) { $Remediation += "  Illegal characters in file name: `"$IllegalFileChars`"." }
+    }
+
     "The address range is invalid*" { $Remediation = "Fix address range in rule." }
+
+    "The port is invalid*" {
+  
+        if ($null -eq $Protocol) {
+          $Remediation = "'Any' protocol is specified with port(s) $Port.  Either change the protocol (typically to TCP or UDP) or remove the port number from the rule.  
+                           If in doubt, delete the rule and recreate it manually."
+        }
+    }
     default { $Remediation = "Unable to detect fix.  Please try to create rule manually to troubleshoot." }
 
   }
@@ -926,7 +952,8 @@ NAME: Test-FirewallRuleCreatesSuccessfully
     [string]$Remediation = ""
     $errMsg = $error[0] 
     "`r`n$tabs$stars`r`n`r`n$tabs Exception creating rule. Name: $dispName`: $errMsg`r`n`r`n$tabs$stars`r`n" | Write-Log -WriteStdOut
-    $Remediation = Get-SuggestedAction -ExceptionInfo  $errMsg -DetectedPathIssues $DetectedPathIssues -FilePath $ConstructedCommandLineArgs.program
+    $Remediation = Get-SuggestedAction -ExceptionInfo  $errMsg -DetectedPathIssues $DetectedPathIssues -FilePath $ConstructedCommandLineArgs.program          `
+            -Port  ( ($ConstructedCommandLineArgs.localPort) + ($ConstructedCommandLineArgs.RemotePort)) -Protocol $ConstructedCommandLineArgs.protocol
     Write-BadRule -FWRule $FWRuleToCreate -ExceptionInfo  $errMsg -DetectedPathIssues $DetectedPathIssues -PolicyName $PolicyName -SuggestedFix $Remediation
   } finally {
     # Catch condition where rule creates successfully but have detected a bad path
@@ -934,7 +961,8 @@ NAME: Test-FirewallRuleCreatesSuccessfully
       [string]$Remediation = ""
       "Bad path regex found in $dispName" | Write-Log -Level Warning
       $DetectedPathIssues | Write-Log -Level Warning
-      $Remediation = Get-SuggestedAction -ExceptionInfo  $errMsg -DetectedPathIssues $DetectedPathIssues -FilePath $ConstructedCommandLineArgs.program
+      $Remediation = Get-SuggestedAction -ExceptionInfo  $errMsg -DetectedPathIssues $DetectedPathIssues -FilePath $ConstructedCommandLineArgs.program       `
+               -Port  ( ($ConstructedCommandLineArgs.localPort) + ($ConstructedCommandLineArgs.RemotePort)) -Protocol $ConstructedCommandLineArgs.protocol
       Write-BadRule -FWRule $FWRuleToCreate -ExceptionInfo  $errMsg -DetectedPathIssues $DetectedPathIssues -PolicyName $PolicyName -SuggestedFix $Remediation
     }
   }
@@ -1638,9 +1666,7 @@ if (-not (Test-IsEULAAccepted) ) {
 
 # If script is ran with no arguments, test to see if JSON files are present.  If not, give the user a choice to 
 # automatically download and process JSON data from Graph
-$PSBoundParameters.Values.Count
-
-$args.count 
+ 
 if (  ( $PSBoundParameters.Values.Count -eq 0 -and $args.count -eq 0 ) `
       -or                                                              `
       ($PSBoundParameters.Values.Count -eq 1 -and $args.count -eq 0 -and $AcceptEULA)
@@ -1705,7 +1731,7 @@ if (Test-Path $HTMLFileName) {
 ############################
 # Cleanup - delete test rules
 
-Remove-TestFirewallRules
+#Remove-TestFirewallRules
 
 
 #endregion

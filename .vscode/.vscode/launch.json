@@ -15,7 +15,7 @@
         {  //validated
             "type":"PowerShell",
             "request": "launch",
-            "name": "Load hi-json with x rules JSON - 2 bad rules injected manually in json",  
+            "name": "Load hi-0 with x rules JSON - 2 bad rules injected manually in json",  
             "script": "${file}",
             "args": [ "-AcceptEULA", "-RuleJSON", "c:\\temp\\jerry\\export\\hi-0_23-02-2022-7-54-33.021.json"]
          },
@@ -34,7 +34,14 @@
             "script": "${file}",
             "args": [ "-AcceptEULA", "-RuleJSON", "c:\\temp\\jerry\\export\\asdf9999_23-02-2022-7-54-28.072.json"]
          },
-
+         {  //
+            "type":"PowerShell",
+            "request": "launch",
+            "name": "IllegalCharacters",
+            "script": "${file}",
+           // "args": [ "-AcceptEULA", "-RuleJSON", "c:\\temp\\jerry\\export\\Invalid_Characters_04-03-2022-16-00-49.234.json"]
+           "args": [ "-AcceptEULA", "-RuleJSON", "c:\\temp\\jerry\\export\\badchar.json"]
+         },
 
          {  //
             "type":"PowerShell",
