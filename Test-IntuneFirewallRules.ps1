@@ -590,10 +590,17 @@ td.red { color: red; }
   $script = @'
 <script>
 window.onload = function() {
+  if (document.querySelectorAll('tr th').length != 0) {
     const headings = document.querySelectorAll('tr th');
     const col = Array.from(headings).find(hd => hd.innerHTML === "Test Result");
     const inx = Array.from(col.parentNode.children).indexOf(col);
     const cells = col.closest('table').querySelectorAll(`td:nth-child(${inx+1})`);
+  }
+else {
+  var table = document.querySelector('table');
+      var tableRow = table.insertRow(-1);
+      tableRow.innerHTML = "<td bgcolor=#6495ed>No errors detected in firewall rules.</td>";
+}
   
 
     Array.from(cells).map((td) => {
