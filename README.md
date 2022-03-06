@@ -20,6 +20,18 @@ Test-IntuneFirewallRules examines JSON data exported by [EndpointSecurityPolicy_
 
 Errors are recorded in Test-IntuneFirewallRules_Errors.*log file and an FirewallRuleTests.html document in the folder the script is ran from.  The HTML document is displayed when the script completes.
 
+## Usage
+
+Test-IntuneFirewallRules must be run as a local administrator.  Your Intune/AAD credentials must allow at least read access on Configuration Policies.
+
+There are two main modes:  Automatic and Script Ingestion.  
+
+To run in **Automatic mode**, run Test-IntuneFirewallRules.ps1 with no additional command-line parameters. In this mode, the script will authenticate to Azure AD, export your Intune firewall rules to JSON files in %temp%, and then evaluate rules.
+
+**Script Ingestion mode** is primarly for use by Microsoft Support.  In this mode, first run [EndpointSecurityPolicy_Export.ps1](https://raw.githubusercontent.com/microsoftgraph/powershell-intune-samples/master/EndpointSecurity/EndpointSecurityPolicy_Export.ps1) in a temporary folder to export all JSON files.  Provide these files to Microsoft Support. Copy the files to a test VM and run the script from the folder where the JSON files are located.  In this mode, Test-IntuneFirewallRules.ps1 does not connect to AAD and tests rule creation locally.  This is ideal for scenarios where you do not wish to create rules on a production workstation.
+
+When the script finishes, it will show an HTML report automatically.![HTML report created by Test-IntuneFirewallRules.ps1](https://github.com/markstan/Test-IntuneFirewallRules/blob/main/Resources/results.png)
+
 ## Precautions
 
 It is highly recommended to run Test-IntuneFirewallRules on a test virtual machine running Windows 10 or Windows 11.  The VM does not need to be enrolled in Intune.
@@ -31,20 +43,28 @@ At the completion of the script, Test-IntuneFirewallRules deletes any rules it c
 
 ![Disabled firewall rule with ___MSTestRule_DeleteMe____ name](https://github.com/markstan/Test-IntuneFirewallRules/blob/main/Resources/DisabledFirewallRule.png)
 
-## Usage
-
-Test-IntuneFirewallRules must be run as a local administrator.  Your Intune/AAD credentials must allow at least read access on Configuration Policies.
-
-When the script finishes, it will show an HTML report automatically.![HTML report created by Test-IntuneFirewallRules.ps1](https://github.com/markstan/Test-IntuneFirewallRules/blob/main/Resources/results.png)
 
 ## Command Line Arguments
 
-* -RuleJSON
-* -DeleteTestFirewallRules
+* **-RuleJSON** - test one or more JSON files exported by [EndpointSecurityPolicy_Export.ps1](https://raw.githubusercontent.com/microsoftgraph/powershell-intune-samples/master/EndpointSecurity/EndpointSecurityPolicy_Export.ps1) .
+* **-DeleteTestFirewallRules** - Clean up any firewall rules created by running the script.  Rules are automatically deleted at the end of script execution; this option is only for scenarios such as accidentally closing the script or rebooting during script execution.
+* **-AcceptEULA** - bypass EULA check for automation.
 
 ## Examples
-Test-IntuneFirewallRules.ps1 -RuleJSON _path_to_JSON_file.json
 
+### **Test-IntuneFirewallRules.ps1**
+
+Automatically downloads and tests all Intune Firewall rules.
+
+If JSON files are present, this syntax will prompt you if JSON files are present in the current folder and then test the files on the local device.
+
+### **Test-IntuneFirewallRules.ps1 -RuleJSON _path_to_JSON_file.json**
+
+Test only rules contained in a single JSON file.
+
+### **Test-IntuneFirewallRules.ps1 -RuleJSON c:\temp**
+
+Tests all JSON files in c:\temp.
 
 After the script runs, 3 files are created:
 
