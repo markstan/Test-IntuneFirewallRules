@@ -537,12 +537,8 @@ New-HTMLReport
 NAME: New-HTMLReport 
 #>
 
-  Param ($resultBlob)
-
-    
- # $xml = $resultBlob | ConvertTo-Xml -NoTypeInformation -As Document
- # $xml.InnerXML      |  Out-File $env:temp\WindowsHealthTests.xml -Force
- 
+  Param ($resultBlob) 
+  
   $head = @'
 <style>
 body { background-color:#ffffff;
@@ -1387,10 +1383,10 @@ $ExportPath
             # Added milliseconds to date format due to duplicate policy name
             $FileName_JSON = "$DisplayName" + "_" + $(get-date -f dd-MM-yyyy-H-mm-ss.fff) + ".json"
 
-            write-host "Export Path:" "$ExportPath"
+            "Export Path: $ExportPath" | Write-Log  
 
             $JSON1 | Set-Content -LiteralPath "$ExportPath\$FileName_JSON"
-            write-host "JSON created in $ExportPath\$FileName_JSON..." -f cyan
+            "JSON created in $ExportPath\$FileName_JSON" | Write-Log  
             
         }
 
