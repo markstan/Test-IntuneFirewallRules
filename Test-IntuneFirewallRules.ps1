@@ -1521,14 +1521,22 @@ function Test-RulesFromJSONFiles {
     $line               | Write-Log -WriteStdOut
     " "                 | Write-Log -WriteStdOut
     # taking out -Raw for compat
-    $JSONfromFile = (Get-Content -Path $Rule )  | ConvertFrom-Json
+    try {
+      $JSONfromFile = (Get-Content -Path $Rule )  | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+      "Error reading $rule.  Skipping file" | Write-Log -WriteStdOut
+      
+    }
     
     # make sure JSON is valid before attempting to parse rules
     $isJSONValidated = $false
-    $isJSONValidated = Test-JSON -JSON $JSONfromFile.settingsDelta.valueJson
+    if ($JSONfromFile) {
+        $isJSONValidated = Test-JSON -JSON $JSONfromFile.settingsDelta.valueJson
+      }
 
     if ( $isJSONValidated) {
-      "JSON validated" | Write-Log -WriteStdOut
+      "JSON in $Rule is valid." | Write-Log  
       $Rules = $JSONfromFile.settingsDelta.valueJson  
       $firewallPolicyName = $JSONfromFile.displayName
       $templateID = $JSONfromFile.TemplateId
@@ -1536,7 +1544,7 @@ function Test-RulesFromJSONFiles {
       # special case for security baseline templates.  These contain policies, but no rules
       # Example: MDM Security Baseline for Windows 10 and later for Decemeber 2020
       if ($templateID -ne "4356d05c-a4ab-4a07-9ece-739f7c792910") {
-        "Skipping baseline template file $rule" | Write-Log  
+        "$rule is not Firewall Rules template.  Skipping" | Write-Log  -WriteStdOut
       }
       else {
         foreach ($Rule in $Rules) {
