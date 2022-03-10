@@ -18,7 +18,7 @@ This utility will evaluate firewall rules from the Intune portal to evaluate com
 
 Test-IntuneFirewallRules examines JSON data exported by [EndpointSecurityPolicy_Export.ps1](https://raw.githubusercontent.com/microsoftgraph/powershell-intune-samples/master/EndpointSecurity/EndpointSecurityPolicy_Export.ps1) in the [Intune Graph Samples](https://github.com/microsoftgraph/powershell-intune-samples) GitHub repo.  Each firewall rule is evaluated on the device the script is ran from to detect errors in rule logic or exceptions reported by the Defender Firewall client.
 
-Errors are recorded in Test-IntuneFirewallRules_Errors.*log file and an FirewallRuleTests.html document in the folder the script is ran from.  The HTML document is displayed when the script completes.
+Errors are recorded in Test-IntuneFirewallRules_Errors.*log file and an FirewallRuleTests.html document in the %temp% folder. The HTML document is displayed when the script completes.
 
 ## Usage
 
