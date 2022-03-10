@@ -958,7 +958,7 @@ NAME: Test-FirewallRuleCreatesSuccessfully
   } catch {
     [string]$Remediation = ""
     $errMsg = $error[0] 
-    "`r`n$tabs$stars`r`n`r`n$tabs Exception creating rule. Name: $dispName`: $errMsg`r`n`r`n$tabs$stars`r`n" | Write-Log -WriteStdOut
+    "`r`n$tabs$stars`r`n`r`n$tabs Error: Exception creating rule. Name: $dispName`: $errMsg`r`n`r`n$tabs$stars`r`n" | Write-Log -WriteStdOut
     $Remediation = Get-SuggestedAction -ExceptionInfo  $errMsg -DetectedPathIssues $DetectedPathIssues -FilePath $ConstructedCommandLineArgs.program          `
             -Port  ( ($ConstructedCommandLineArgs.localPort) + ($ConstructedCommandLineArgs.RemotePort)) -Protocol $ConstructedCommandLineArgs.protocol
     Write-BadRule -FWRule $FWRuleToCreate -ExceptionInfo  $errMsg -DetectedPathIssues $DetectedPathIssues -PolicyName $PolicyName -SuggestedFix $Remediation
