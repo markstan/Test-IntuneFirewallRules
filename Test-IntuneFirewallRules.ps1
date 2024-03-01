@@ -276,6 +276,26 @@ NAME: Test-IsAdmin
 
 ####################################################  
 
+function Test-IsModuleInstalled {
+    param (
+        [string]$ModuleName = "Microsoft.Graph.Authentication"
+    )
+    [bool]$module = $false
+ 
+    $null = Import-Module -Name $ModuleName
+    $module = Get-Module -Name $ModuleName
+
+    if ($module) {
+        Write-Output "$ModuleName is installed"
+    } else {
+        Write-Output "$ModuleName is not installed"
+    }
+
+    $module
+}
+
+######################################################
+
 function Get-AuthToken {
 
   <#
@@ -293,125 +313,27 @@ function Get-AuthToken {
   [cmdletbinding()]
     
   param
-  (
-    [Parameter(Mandatory = $true)]
-    $User
-  )
-    
-  $userUpn = New-Object "System.Net.Mail.MailAddress" -ArgumentList $User
-    
-  $tenant = $userUpn.Host
-    
-  Write-Host "Checking for AzureAD module..."
-    
-  $AadModule = Get-Module -Name "AzureAD" -ListAvailable
-    
-  if ($null -eq $AadModule) {
-    
-    Write-Host "AzureAD PowerShell module not found, looking for AzureADPreview"
-    $AadModule = Get-Module -Name "AzureADPreview" -ListAvailable
-    
-  }
-    
-  if ($null -eq $AadModule) {
-    Write-Host
-    Write-Host "AzureAD Powershell module not installed..." -f Red
-    Write-Host "Install by running 'Install-Module AzureAD' or 'Install-Module AzureADPreview' from an elevated PowerShell prompt" -f Yellow
-    Write-Host "Script can't continue..." -f Red
-    Write-Host
-    exit
-  }
-    
-  # Getting path to ActiveDirectory Assemblies
-  # If the module count is greater than 1 find the latest version
-    
-  if ($AadModule.count -gt 1) {
-    
-    $Latest_Version = ($AadModule | Select-Object version | Sort-Object)[-1]
-    
-    $aadModule = $AadModule | Where-Object { $_.version -eq $Latest_Version.version }
-    
-    # Checking if there are multiple versions of the same module found
-    
-    if ($AadModule.count -gt 1) {
-    
-      $aadModule = $AadModule | Select-Object -Unique
-    
+  ()
+
+    $moduleInstalled = Test-IsModuleInstalled -ModuleName "Microsoft.Graph.Authentication"
+
+    if ($moduleInstalled) {
+        Connect-MgGraph -Scopes "User.Read.All" -NoWelcome  
     }
-    
-    $adal = Join-Path $AadModule.ModuleBase "Microsoft.IdentityModel.Clients.ActiveDirectory.dll"
-    $adalforms = Join-Path $AadModule.ModuleBase "Microsoft.IdentityModel.Clients.ActiveDirectory.Platform.dll"
-    
-  }
-    
-  else {
-    
-    $adal = Join-Path $AadModule.ModuleBase "Microsoft.IdentityModel.Clients.ActiveDirectory.dll"
-    $adalforms = Join-Path $AadModule.ModuleBase "Microsoft.IdentityModel.Clients.ActiveDirectory.Platform.dll"
-    
-  }
-    
-  [System.Reflection.Assembly]::LoadFrom($adal) | Out-Null
-    
-  [System.Reflection.Assembly]::LoadFrom($adalforms) | Out-Null
-    
-  $clientId = "d1ddf0e4-d672-4dae-b554-9d5bdfd93547"
-    
-  $redirectUri = "urn:ietf:wg:oauth:2.0:oob"
-    
-  $resourceAppIdURI = "https://graph.microsoft.com"
-    
-  $authority = "https://login.microsoftonline.com/$Tenant"
-    
-  try {
-    
-    $authContext = New-Object "Microsoft.IdentityModel.Clients.ActiveDirectory.AuthenticationContext" -ArgumentList $authority
-    
-    # https://msdn.microsoft.com/en-us/library/azure/microsoft.identitymodel.clients.activedirectory.promptbehavior.aspx
-    # Change the prompt behaviour to force credentials each time: Auto, Always, Never, RefreshSession
-    
-    $platformParameters = New-Object "Microsoft.IdentityModel.Clients.ActiveDirectory.PlatformParameters" -ArgumentList "Auto"
-    
-    $userId = New-Object "Microsoft.IdentityModel.Clients.ActiveDirectory.UserIdentifier" -ArgumentList ($User, "OptionalDisplayableId")
-    
-    $authResult = $authContext.AcquireTokenAsync($resourceAppIdURI, $clientId, $redirectUri, $platformParameters, $userId).Result
-    
-    if ($authResult.AccessToken) {
-    
-      # Creating header for Authorization token
-    
-      $authHeader = @{
-        'Content-Type'  = 'application/json'
-        'Authorization' = "Bearer " + $authResult.AccessToken
-        'ExpiresOn'     = $authResult.ExpiresOn
-      }
-    
-      return $authHeader
-    
-    }
-    
     else {
-    
-      Write-Host
-      Write-Host "Authorization Access Token is null, please re-run authentication..." -ForegroundColor Red
-      Write-Host
-      break
-    
-    }
-    
+        Write-Host
+        Write-Host "Microsoft.Graph.Authentication PowerShell module not installed..." -f Red
+        Write-Host "Install by running 'Install-Module  `"Microsoft.Graph.Authentication`"' from an elevated PowerShell prompt" -f Yellow
+        Write-Host "Script can't continue..." -f Red
+        Write-Host
+        exit
   }
     
-  catch {
-    
-    Write-Host $_.Exception.Message -f Red
-    Write-Host $_.Exception.ItemName -f Red
-    Write-Host
-    break
-    
-  }
     
 }
  
+
+
 
 ####################################################
  
@@ -1154,22 +1076,22 @@ $ESP_resource = "deviceManagement/intents"
     try {
 
         $uri = "https://graph.microsoft.com/$graphApiVersion/$($ESP_resource)"
-        (Invoke-RestMethod -Method Get -Uri $uri -Headers $authToken).value
-
+        #(Invoke-RestMethod -Method Get -Uri $uri -Headers $authToken).value
+        (Invoke-MgGraphRequest -Uri $uri -Method GET).value
     }
     
     catch {
 
-    $ex = $_.Exception
-    $errorResponse = $ex.Response.GetResponseStream()
-    $reader = New-Object System.IO.StreamReader($errorResponse)
-    $reader.BaseStream.Position = 0
-    $reader.DiscardBufferedData()
-    $responseBody = $reader.ReadToEnd();
-    Write-Host "Response content:`n$responseBody" -f Red
-    Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
-    write-host
-    break
+      $ex = $_.Exception
+      $errorResponse = $ex.Response.GetResponseStream()
+      $reader = New-Object System.IO.StreamReader($errorResponse)
+      $reader.BaseStream.Position = 0
+      $reader.DiscardBufferedData()
+      $responseBody = $reader.ReadToEnd();
+      Write-Host "Response content:`n$responseBody" -f Red
+      Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
+      write-host
+      break
 
     }
 
@@ -1198,7 +1120,7 @@ Function Get-EndpointSecurityTemplate(){
       try {
   
           $uri = "https://graph.microsoft.com/$graphApiVersion/$($ESP_resource)"
-          (Invoke-RestMethod -Method Get -Uri $uri -Headers $authToken).value
+          (Invoke-MgGraphRequest -Uri $uri -Method GET).value
   
       }
       
@@ -1250,7 +1172,7 @@ $ESP_resource = "deviceManagement/templates/$TemplateId/categories"
     try {
 
         $uri = "https://graph.microsoft.com/$graphApiVersion/$($ESP_resource)"
-        (Invoke-RestMethod -Method Get -Uri $uri -Headers $authToken).value
+        (Invoke-MgGraphRequest -Uri $uri -Method GET).value
 
     }
     
@@ -1305,7 +1227,7 @@ $ESP_resource = "deviceManagement/intents/$policyId/categories/$categoryId/setti
     try {
 
         $uri = "https://graph.microsoft.com/$graphApiVersion/$($ESP_resource)"
-        (Invoke-RestMethod -Method Get -Uri $uri -Headers $authToken).value
+        (Invoke-MgGraphRequest -Uri $uri -Method GET).value
 
     }
     
@@ -1556,8 +1478,6 @@ function Test-RulesFromJSONFiles {
             }
           }
         }
-  
-
     }
 
 
@@ -1567,67 +1487,7 @@ function Test-RulesFromJSONFiles {
     }
 }
 }
-
-####################################################
-
-function Test-IsUserAuthenticated {
-<#
-.SYNOPSIS
-Test to see if user is authenticated to Graph API
-.DESCRIPTION
-Check if user is authenticated.  If not, prompt for credentials
-.EXAMPLE
-Test-IsUserAuthenticated
  
-.NOTES
-NAME: Test-IsUserAuthenticated
-#> 
-
-
-  # Checking if authToken exists before running authentication
-  if ($global:authToken) {
-
-  # Setting DateTime to Universal time to work in all timezones
-  $DateTime = (Get-Date).ToUniversalTime()
-
-  # If the authToken exists checking when it expires
-  $TokenExpires = ($authToken.ExpiresOn.datetime - $DateTime).Minutes
-
-  if ($TokenExpires -le 0) {
-
-    Write-Host "Authentication Token expired" $TokenExpires "minutes ago" -ForegroundColor Yellow
-    Write-Host
-
-    # Defining Azure AD tenant name, this is the name of your Azure Active Directory (do not use the verified domain name)
-
-    if (($null -eq $User) -or ($User -eq "")) {
-
-      $User = Read-Host -Prompt "Please specify your user principal name for Azure Authentication"
-      Write-Host
-
-    }
-
-    $global:authToken = Get-AuthToken -User $User
-
-  }
-    }
-
-    # Authentication doesn't exist, calling Get-AuthToken function
-
-                            else {
-  if ( ($null -eq $User) -or ($User -eq "")) {
-
-    $User = Read-Host -Prompt "Please specify your user principal name for Azure Authentication"
-    Write-Host
-  }
-
-  # Getting the authorization token
-  $global:authToken = Get-AuthToken -User $User
-
-    }
-
-}
-
 ####################################################
 
 #endregion functions
@@ -1713,11 +1573,6 @@ if (( $PSBoundParameters.Values.Count -eq 0 -and $args.count -eq 0 ) `
 ####################################################
 
     if ( $JSONFiles) {
-														   
-																				  
-																																	  
-																																  
-
         Write-Host "`r`n`r`n$line$stars" -ForegroundColor Green
         write-host "JSON files detected in current folder.`r`n" -ForegroundColor Green
         Write-Host "Type (Y)es to test firewall rules from JSON files in current folder, any other key to exit`r`n" -ForegroundColor Green
@@ -1741,7 +1596,7 @@ if (( $PSBoundParameters.Values.Count -eq 0 -and $args.count -eq 0 ) `
   
     else {
     
-        Test-IsUserAuthenticated
+        Get-AuthToken
 
         $exportFolderName = "FWJSON" +  (Get-Date).ToString("ddMMyyyyhhmmss")
         $exportpath = Join-Path $env:temp $exportFolderName
@@ -1757,17 +1612,12 @@ if (( $PSBoundParameters.Values.Count -eq 0 -and $args.count -eq 0 ) `
 # Process rules if files exist
 
 if ($RuleJSON){
-						 
-  
     Test-RulesFromJSONFiles
-  
 }
 
 else {
-
     "No JSON files found in $pwd. Exiting." | Write-Log -WriteStdOut
     break
-
 }
 
 
@@ -1783,9 +1633,7 @@ $global:detectedErrors |  Format-List | Out-File $global:ErrorLogName -Force -Ap
 $HTMLFileName = New-HTMLReport -resultBlob $global:detectedErrors
 
 if (Test-Path $HTMLFileName){
-
     Start-Process $HTMLFileName
-
 }
  
 ####################################################
